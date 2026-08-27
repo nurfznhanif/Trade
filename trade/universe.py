@@ -17,6 +17,16 @@ _UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.
 _WEIRD_CHARS = set(".$+=^ /\\")
 
 
+def fetch_universe(markets) -> list[dict]:
+    """Gabung universe sesuai daftar pasar (mis. ['IDX'] atau ['IDX','US'])."""
+    out: list[dict] = []
+    if "IDX" in markets:
+        out += fetch_idx_universe()
+    if "US" in markets:
+        out += fetch_us_universe()
+    return out
+
+
 def fetch_idx_universe() -> list[dict]:
     """Semua saham tercatat di IDX. Ticker dikasih suffix .JK biar cocok yfinance."""
     url = ("https://www.idx.co.id/primary/StockData/GetSecuritiesStock"

@@ -49,6 +49,8 @@ def main():
     print(f"    (rata2 {p.lookback} hari terakhir, minimal {p.min_ndays} hari data)")
 
     for label, lst in [("US 🇺🇸", us), ("IDX 🇮🇩", idx)]:
+        if not lst:
+            continue
         print(f"\n  ── TOP 15 {label} (paling likuid) ──")
         for x in lst[:15]:
             print(f"    {x['ticker']:11s} {fmt_price(x['last_close'], x['market']):>11} "

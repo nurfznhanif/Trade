@@ -221,3 +221,17 @@ def replace_signals(conn, items) -> int:
     )
     conn.commit()
     return len(items)
+
+
+def prune_to_markets(conn, markets) -> int:
+    """Hapus SEMUA data (harga/berita/focus/sinyal/instrumen) buat pasar di luar `markets`.
+    Return jumlah instrumen yang dibuang. Reversible: tinggal load_universe + backfill lagi."""
+    ph = ",".join("?" * len(markets))
+    drop = f"(SELECT ticker FROM instruments WHERE market NOT IN ({ph}))"
+    conn.execute(f"DELETE FROM prices WHERE ticker IN {drop}", markets)
+    conn.execute(f"DELETE FROM news   WHERE ticker IN {drop}", markets)
+    conn.execute(f"DELETE FROM focus_list WHERE market NOT IN ({ph})", markets)
+    conn.execute(f"DELETE FROM signals    WHERE market NOT IN ({ph})", markets)
+    cur = conn.execute(f"DELETE FROM instruments WHERE market NOT IN ({ph})", markets)
+    conn.commit()
+    return cur.rowcount

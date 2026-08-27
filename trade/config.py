@@ -13,6 +13,10 @@ DATA_DIR = BASE_DIR / "data"
 WATCHLIST_PATH = CONFIG_DIR / "watchlist.yaml"
 DB_PATH = DATA_DIR / "trade.db"
 
+# Pasar yang diikutkan. Project fokus SAHAM INDONESIA (backtest: IDX ada edge, US enggak).
+# Mau aktifin US lagi? tambahin "US" di sini, terus jalanin load_universe + backfill.
+MARKETS = ["IDX"]
+
 
 @dataclass
 class Instrument:

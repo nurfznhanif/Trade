@@ -1,7 +1,9 @@
 # Trade — Analisis Saham berbasis Harga + Berita/Sentimen
 
 Project buat bantu keputusan **beli/jual saham** (swing trading, harian–mingguan)
-berbasis **berita + sentimen + fundamental + teknikal**. Dua pasar: **US** & **Indonesia (IDX)**.
+berbasis **berita + sentimen + fundamental + teknikal**. **Fokus: saham Indonesia (IDX)**
+— backtest 5 tahun nunjukin IDX punya edge, US enggak. Kode tetap market-agnostic
+(atur di `trade/config.py` → `MARKETS`; US bisa diaktifin lagi kapan aja).
 
 > ⚠️ Bukan nasihat keuangan. Sistem ini alat bantu keputusan, bukan mesin ATM.
 > Jalur wajib sebelum pakai duit beneran: **backtest → paper trading → duit kecil.**
