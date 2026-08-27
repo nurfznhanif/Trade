@@ -1,38 +1,43 @@
 """Backtest event-driven, long-only, POINT-IN-TIME (anti lookahead bias).
 
-Aturan main di tiap hari t (cuma pakai data s/d t):
-  - Hitung sinyal (teknikal + sentimen dari berita yang PUBLISH s/d t).
-  - Kalau BUY & lagi tidak punya posisi -> MASUK di close[t]; pasang stop & target.
-  - Hari-hari berikut dicek berurutan:
-        low <= stop   -> keluar di stop   (STOP)
-        high >= target-> keluar di target (TARGET)
-        nahan > max_hold -> keluar di close (TIME)
-    (kalau satu hari kena dua-duanya, anggap STOP dulu — konservatif)
-  - Gak overlap di ticker yang sama.
+Indikator (MA/RSI/ATR) DIPRECOMPUTE vectorized di runner (rolling window = cuma
+pakai data s/d hari itu, jadi tetap anti-lookahead) lalu dioper ke sini sebagai
+array. Di sini tinggal jalan per hari -> cepat walau histori bertahun-tahun.
 
-CATATAN JUJUR: berita kita baru dikumpulin belakangan, jadi buat tanggal lama
-n_news biasanya 0 -> di masa lampau sinyal praktis TEKNIKAL doang. Bagian sentimen
-baru bener-bener keuji lewat paper trading ke depan (atau arsip berita historis).
+Exit:
+  - "trailing": stop awal = entry - stop_mult*ATR, lalu NAIK ngikutin harga
+    tertinggi (highest_high - trail_mult*ATR). Biarin pemenang lari.
+  - "fixed"   : stop tetap + target reward_risk:1 (versi lama, buat pembanding).
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
 
-from .indicators import atr, rsi, sma
 from .signals import SignalParams, decide
 
 
 @dataclass
 class BTParams:
-    max_hold: int = 20        # hari bursa maksimal nahan posisi (swing)
-    min_history: int = 50     # butuh >=50 bar buat MA50
+    exit_mode: str = "trailing"   # "trailing" atau "fixed"
+    max_hold: int = 40            # batas nahan (hari bursa) — backstop
+    stop_mult: float = 2.0        # stop awal = entry - stop_mult*ATR
+    trail_mult: float = 3.0       # trailing = highest_high - trail_mult*ATR
+    reward_risk: float = 2.0      # (mode fixed) target = entry + rr*risiko
+    min_history: int = 50
     sent_window_days: int = 14
 
 
+def _nn(x):
+    if x is None:
+        return None
+    x = float(x)
+    return None if math.isnan(x) else x
+
+
 def _sentiment_at(day_ord, news_ord, news_sent, window):
-    """Rata2 sentimen berita yang publish di (day-window, day]. Anti lookahead."""
     if not news_ord:
         return 0.0, 0
     lo = day_ord - window
@@ -42,58 +47,75 @@ def _sentiment_at(day_ord, news_ord, news_sent, window):
     return float(sum(vals) / len(vals)), len(vals)
 
 
-def backtest_ticker(dates_ord, highs, lows, closes, news_ord, news_sent,
-                    sp: SignalParams, bt: BTParams):
-    """Return list of trade dict buat satu ticker."""
+def _sim_fixed(highs, lows, closes, i, stop, target, bt):
+    for k in range(i + 1, min(i + 1 + bt.max_hold, len(closes))):
+        if lows[k] <= stop:
+            return k, stop, "STOP"
+        if highs[k] >= target:
+            return k, target, "TARGET"
+    k = min(i + bt.max_hold, len(closes) - 1)
+    return k, closes[k], ("TIME" if k == i + bt.max_hold else "EOD")
+
+
+def _sim_trailing(highs, lows, closes, i, stop, atr_e, bt):
+    hh = highs[i]
+    end = min(i + bt.max_hold, len(closes) - 1)
+    for k in range(i + 1, end + 1):
+        if lows[k] <= stop:                       # cek stop (dari data s/d k-1)
+            return k, stop, "TRAIL"
+        if highs[k] > hh:
+            hh = highs[k]
+        stop = max(stop, hh - bt.trail_mult * atr_e)   # trailing NAIK aja
+    return end, closes[end], ("TIME" if end == i + bt.max_hold else "EOD")
+
+
+def backtest_ticker(dates_ord, highs, lows, closes, ma20, ma50, rsi_a, atr_a,
+                    news_ord, news_sent, sp: SignalParams, bt: BTParams):
+    """Return list of trade dict. Indikator dioper sbg array (aligned dgn closes)."""
     trades = []
     n = len(closes)
     i = bt.min_history
     while i < n:
-        c = closes[:i + 1]
         sent, n_news = _sentiment_at(dates_ord[i], news_ord, news_sent, bt.sent_window_days)
+        atr_e = _nn(atr_a[i])
         feat = {
             "close": float(closes[i]),
-            "ma20": sma(c, 20), "ma50": sma(c, 50),
-            "rsi": rsi(c, 14), "atr": atr(highs[:i + 1], lows[:i + 1], c, 14),
+            "ma20": _nn(ma20[i]), "ma50": _nn(ma50[i]),
+            "rsi": _nn(rsi_a[i]), "atr": atr_e,
             "sent": sent, "n_news": n_news,
         }
         d = decide(feat, sp)
 
-        if d["action"] == "BUY" and d["stop"]:
-            entry, stop, target = closes[i], d["stop"], d["target"]
-            exit_i = exit_px = outcome = None
-            for k in range(i + 1, min(i + 1 + bt.max_hold, n)):
-                if lows[k] <= stop:
-                    exit_i, exit_px, outcome = k, stop, "STOP"
-                    break
-                if highs[k] >= target:
-                    exit_i, exit_px, outcome = k, target, "TARGET"
-                    break
-            if exit_i is None:                      # kena batas waktu / mentok data
-                k = min(i + bt.max_hold, n - 1)
-                outcome = "TIME" if k == i + bt.max_hold else "EOD"
-                exit_i, exit_px = k, closes[k]
+        if d["action"] == "BUY" and atr_e:
+            entry = float(closes[i])
+            init_stop = entry - bt.stop_mult * atr_e
+            if not (0 < init_stop < entry):
+                i += 1
+                continue
+            if bt.exit_mode == "trailing":
+                ei, epx, out = _sim_trailing(highs, lows, closes, i, init_stop, atr_e, bt)
+            else:
+                target = entry + bt.reward_risk * (entry - init_stop)
+                ei, epx, out = _sim_fixed(highs, lows, closes, i, init_stop, target, bt)
 
             trades.append({
-                "entry_i": i, "exit_i": exit_i, "entry": float(entry),
-                "exit": float(exit_px), "ret": float(exit_px) / float(entry) - 1.0,
-                "bars": exit_i - i, "outcome": outcome, "n_news": n_news,
+                "entry_i": i, "exit_i": ei, "entry": entry, "exit": float(epx),
+                "ret": float(epx) / entry - 1.0, "bars": ei - i,
+                "outcome": out, "n_news": n_news,
             })
-            i = exit_i + 1                          # gak overlap
+            i = ei + 1
         else:
             i += 1
     return trades
 
 
 def summarize(trades):
-    """Metrik agregat dari list trade."""
     if not trades:
         return {"n": 0}
     rets = np.array([t["ret"] for t in trades])
     wins = rets[rets > 0]
     losses = rets[rets <= 0]
-    gross_win = wins.sum()
-    gross_loss = -losses.sum()
+    gw, gl = wins.sum(), -losses.sum()
     return {
         "n": len(trades),
         "win_rate": len(wins) / len(rets),
@@ -101,7 +123,7 @@ def summarize(trades):
         "median_ret": float(np.median(rets)),
         "avg_win": wins.mean() if len(wins) else 0.0,
         "avg_loss": losses.mean() if len(losses) else 0.0,
-        "profit_factor": (gross_win / gross_loss) if gross_loss > 0 else float("inf"),
+        "profit_factor": (gw / gl) if gl > 0 else float("inf"),
         "avg_bars": np.mean([t["bars"] for t in trades]),
         "expectancy": rets.mean(),
     }

@@ -36,12 +36,14 @@ def main():
     ap.add_argument("--limit", type=int, help="ambil N saham pertama (buat tes)")
     ap.add_argument("--refresh", action="store_true",
                     help="fetch ulang semua (update). Tanpa ini: skip yang udah ada data.")
+    ap.add_argument("--focus", action="store_true",
+                    help="cuma saham di focus_list (bukan seluruh universe)")
     args = ap.parse_args()
 
     conn = get_connection()
     init_db(conn)
 
-    q = "SELECT ticker FROM instruments"
+    q = "SELECT ticker FROM focus_list" if args.focus else "SELECT ticker FROM instruments"
     params: list = []
     if args.market:
         q += " WHERE market = ?"
