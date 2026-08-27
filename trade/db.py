@@ -54,6 +54,24 @@ CREATE TABLE IF NOT EXISTS focus_list (
     updated       TEXT
 );
 
+CREATE TABLE IF NOT EXISTS signals (
+    ticker  TEXT PRIMARY KEY,
+    market  TEXT,
+    asof    TEXT,          -- tanggal harga terakhir yang dipakai
+    action  TEXT,          -- BUY / HOLD / SELL
+    score   REAL,
+    close   REAL,
+    ma20    REAL,
+    ma50    REAL,
+    rsi     REAL,
+    sent    REAL,
+    n_news  INTEGER,
+    stop    REAL,
+    target  REAL,
+    reasons TEXT,          -- JSON list alasan
+    updated TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_prices_ticker_date ON prices (ticker, date);
 CREATE INDEX IF NOT EXISTS idx_news_ticker_pub    ON news   (ticker, published);
 """
@@ -185,3 +203,21 @@ def update_news_sentiment_bulk(conn, rows) -> int:
     )
     conn.commit()
     return len(rows)
+
+
+def replace_signals(conn, items) -> int:
+    """Ganti total isi tabel signals dengan hasil generate terbaru."""
+    now = _now_iso()
+    conn.execute("DELETE FROM signals")
+    conn.executemany(
+        "INSERT INTO signals "
+        "(ticker, market, asof, action, score, close, ma20, ma50, rsi, sent, "
+        " n_news, stop, target, reasons, updated) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [(it["ticker"], it["market"], it["asof"], it["action"], it["score"],
+          it["close"], it["ma20"], it["ma50"], it["rsi"], it["sent"],
+          it["n_news"], it["stop"], it["target"], it["reasons"], now)
+         for it in items],
+    )
+    conn.commit()
+    return len(items)
