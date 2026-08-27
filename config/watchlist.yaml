@@ -1,0 +1,45 @@
+# ============================================================
+# WATCHLIST — daftar saham yang dipantau
+# ============================================================
+# Tiap saham punya:
+#   ticker      : kode saham. US = biasa (AAPL). IDX = pakai suffix .JK (BBCA.JK)
+#   name        : nama buat ditampilin
+#   market      : US atau IDX
+#   news_query  : kata kunci buat cari berita di Google News
+#   news_lang   : bahasa berita -> en (Inggris) atau id (Indonesia)
+#
+# Mau nambah saham? tinggal copy satu blok di bawah, ganti isinya.
+# ============================================================
+
+instruments:
+  # --- Saham US ---
+  - ticker: AAPL
+    name: Apple Inc.
+    market: US
+    news_query: Apple AAPL stock
+    news_lang: en
+
+  - ticker: NVDA
+    name: NVIDIA Corporation
+    market: US
+    news_query: Nvidia NVDA stock
+    news_lang: en
+
+  # --- Saham Indonesia (IDX) ---
+  - ticker: BBCA.JK
+    name: Bank Central Asia
+    market: IDX
+    news_query: saham BBCA Bank Central Asia
+    news_lang: id
+
+  - ticker: TLKM.JK
+    name: Telkom Indonesia
+    market: IDX
+    news_query: saham TLKM Telkom Indonesia
+    news_lang: id
+
+  - ticker: ASII.JK
+    name: Astra International
+    market: IDX
+    news_query: saham ASII Astra International
+    news_lang: id
