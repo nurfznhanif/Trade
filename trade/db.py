@@ -74,6 +74,13 @@ CREATE TABLE IF NOT EXISTS signals (
     updated TEXT
 );
 
+CREATE TABLE IF NOT EXISTS paper_state (
+    id             INTEGER PRIMARY KEY CHECK (id = 1),
+    inception_date TEXT,      -- tanggal mulai paper trading (dikunci sekali)
+    start_capital  REAL,
+    created        TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_prices_ticker_date ON prices (ticker, date);
 CREATE INDEX IF NOT EXISTS idx_news_ticker_pub    ON news   (ticker, published);
 """
@@ -199,6 +206,15 @@ def insert_news(conn, ticker: str, items: Iterable[dict]) -> int:
     )
     conn.commit()
     return conn.total_changes - before
+
+
+def get_or_init_paper_state(conn, inception_date: str, start_capital: float):
+    """Ambil state paper trading; kalau belum ada, kunci inception + modal awal."""
+    conn.execute(
+        "INSERT OR IGNORE INTO paper_state (id, inception_date, start_capital, created) "
+        "VALUES (1, ?, ?, ?)", (inception_date, start_capital, _now_iso()))
+    conn.commit()
+    return conn.execute("SELECT * FROM paper_state WHERE id = 1").fetchone()
 
 
 def backfill_title_keys(conn) -> int:
