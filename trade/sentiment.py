@@ -25,7 +25,7 @@ _POS_WORDS = {
     "naik", "menguat", "melonjak", "lonjak", "untung", "laba", "cuan", "tumbuh",
     "pertumbuhan", "positif", "rekor", "moncer", "borong", "akumulasi", "ekspansi",
     "meroket", "melesat", "menanjak", "kenaikan", "meningkat", "optimis", "prospek",
-    "dividen", "surplus", "menguatnya", "melejit",
+    "dividen", "surplus", "menguatnya", "melejit", "akuisisi", "buyback",
 }
 _NEG_WORDS = {
     # EN
@@ -40,7 +40,8 @@ _NEG_WORDS = {
     "turun", "anjlok", "merosot", "rugi", "kerugian", "melemah", "tekanan",
     "tertekan", "koreksi", "terkoreksi", "jatuh", "ambruk", "negatif", "memburuk",
     "penurunan", "pesimis", "gagal", "jeblok", "longsor", "amblas", "terpuruk",
-    "melemahnya", "anjloknya",
+    "melemahnya", "anjloknya", "suspensi", "disuspensi", "pailit", "pkpu",
+    "delisting", "penundaan", "gugatan",
 }
 
 # Frasa (dicek sebagai substring, boleh multi-kata) — lebih spesifik, bobotnya sama
@@ -48,11 +49,13 @@ _POS_PHRASES = [
     "net buy", "buy rating", "rekomendasi beli", "net buy asing", "target naik",
     "cetak laba", "kinerja positif", "record high", "all-time high",
     "beat estimates", "above estimates", "raised guidance", "price target raised",
+    "pembagian dividen", "tender offer", "stock split", "buy back",
 ]
 _NEG_PHRASES = [
     "net sell", "sell rating", "rekomendasi jual", "net sell asing",
     "below estimates", "miss estimates", "profit warning", "rugi bersih",
     "kinerja negatif", "cut guidance", "price target cut", "auto reject bawah",
+    "permintaan penjelasan", "unusual market activity", "gagal bayar", "penjelasan bursa",
 ]
 
 _TOKEN_RE = re.compile(r"[a-zA-Z]+")

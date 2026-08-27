@@ -1,6 +1,7 @@
 """SQLite storage layer: skema + helper simpan data."""
 from __future__ import annotations
 
+import re
 import sqlite3
 from datetime import datetime, timezone
 from typing import Iterable
@@ -40,7 +41,8 @@ CREATE TABLE IF NOT EXISTS news (
     sent_label  TEXT,             -- positive / negative / neutral
     sent_score  REAL,             -- -1..1
     sent_scorer TEXT,             -- nama scorer yang dipakai (lexicon/finbert/...)
-    UNIQUE (ticker, link)         -- cegah berita dobel
+    title_key   TEXT,             -- judul dinormalisasi (buat dedup lintas sumber)
+    UNIQUE (ticker, link)         -- cegah berita dobel (link sama)
 );
 
 CREATE TABLE IF NOT EXISTS focus_list (
@@ -96,7 +98,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
     """Tambah kolom yang belum ada di DB lama (biar gak perlu hapus DB)."""
     _add_columns(conn, "instruments", {"exchange": "TEXT", "board": "TEXT"})
     _add_columns(conn, "news",
-                 {"sent_label": "TEXT", "sent_score": "REAL", "sent_scorer": "TEXT"})
+                 {"sent_label": "TEXT", "sent_score": "REAL", "sent_scorer": "TEXT",
+                  "title_key": "TEXT"})
 
 
 def _add_columns(conn: sqlite3.Connection, table: str, cols: dict) -> None:
@@ -156,25 +159,57 @@ def upsert_prices(conn, ticker: str, rows: Iterable[tuple]) -> int:
     return len(data)
 
 
+_TK_RE = re.compile(r"[^a-z0-9 ]+")
+
+
+def title_key(title: str | None) -> str | None:
+    """Normalisasi judul buat dedup lintas sumber (buang ' - Publisher', simbol, dll)."""
+    if not title:
+        return None
+    base = title.rsplit(" - ", 1)[0].lower()   # buang ekor ' - Nama Media'
+    base = " ".join(_TK_RE.sub(" ", base).split())
+    return base[:90] or None
+
+
 def insert_news(conn, ticker: str, items: Iterable[dict]) -> int:
-    """Simpan berita. INSERT OR IGNORE -> yang dobel (ticker+link) dilewat.
-    Return jumlah baris BARU yang kesimpan."""
-    rows = [
-        (ticker, it.get("published"), it.get("title"), it.get("link"),
-         it.get("source"), it.get("summary"), _now_iso())
-        for it in items
-    ]
+    """Simpan berita. Dedup 2 lapis: link sama (UNIQUE) + JUDUL mirip (title_key),
+    biar berita sama dari beda sumber gak kehitung dobel. Return baris BARU."""
+    existing = {r[0] for r in conn.execute(
+        "SELECT title_key FROM news WHERE ticker = ? AND title_key IS NOT NULL", (ticker,))}
+    seen = set(existing)
+
+    rows = []
+    for it in items:
+        tk = title_key(it.get("title"))
+        if tk and tk in seen:
+            continue                      # judul udah ada (sumber lain / batch ini)
+        if tk:
+            seen.add(tk)
+        rows.append((ticker, it.get("published"), it.get("title"), it.get("link"),
+                     it.get("source"), it.get("summary"), _now_iso(), tk))
     if not rows:
         return 0
+
     before = conn.total_changes
     conn.executemany(
         "INSERT OR IGNORE INTO news "
-        "(ticker, published, title, link, source, summary, fetched_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "(ticker, published, title, link, source, summary, fetched_at, title_key) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         rows,
     )
     conn.commit()
     return conn.total_changes - before
+
+
+def backfill_title_keys(conn) -> int:
+    """Isi title_key buat baris lama yang masih kosong (sekali jalan)."""
+    rows = conn.execute("SELECT id, title FROM news WHERE title_key IS NULL").fetchall()
+    ups = [(title_key(r["title"]), r["id"]) for r in rows]
+    ups = [(k, i) for k, i in ups if k]
+    if ups:
+        conn.executemany("UPDATE news SET title_key = ? WHERE id = ?", ups)
+        conn.commit()
+    return len(ups)
 
 
 def replace_focus_list(conn, items) -> int:

@@ -42,6 +42,45 @@ def fetch_news(query: str, lang: str = "en", limit: int = 20) -> list[dict]:
     return items
 
 
+_scraper = None
+
+
+def _get_scraper():
+    """Satu cloudscraper dipakai ulang (cookie Cloudflare kesimpen -> call berikut cepat)."""
+    global _scraper
+    if _scraper is None:
+        import cloudscraper
+        _scraper = cloudscraper.create_scraper(browser={"browser": "chrome", "platform": "windows"})
+    return _scraper
+
+
+def fetch_idx_disclosures(code: str, limit: int = 12) -> list[dict]:
+    """Pengumuman/keterbukaan resmi IDX per emiten (event: dividen, RUPS, suspensi, dll).
+
+    `code` = kode emiten tanpa .JK (mis. 'BBCA'). Sumber resmi, gratis (via cloudscraper).
+    """
+    url = ("https://www.idx.co.id/primary/ListedCompany/GetAnnouncement"
+           f"?indexFrom=1&pageSize={limit}&dateFrom=&dateTo=&lang=id&keyword=&KodeEmiten={code}")
+    r = _get_scraper().get(url, timeout=40)
+    r.raise_for_status()
+
+    out: list[dict] = []
+    for rep in r.json().get("Replies", []):
+        p = rep.get("pengumuman") or {}
+        title = (p.get("JudulPengumuman") or "").strip()
+        if not title:
+            continue
+        uid = str(p.get("Id2") or p.get("NoPengumuman") or title).strip()
+        out.append({
+            "published": p.get("TglPengumuman"),          # "2026-08-27T20:18:28"
+            "title": title,
+            "link": f"idx-disc://{uid}",
+            "source": "IDX Disclosure",
+            "summary": (p.get("PerihalPengumuman") or "").strip(),
+        })
+    return out
+
+
 def build_news_query(ticker: str, name: str, market: str) -> tuple[str, str]:
     """Bikin (query, lang) otomatis dari nama emiten. Buat saham yang gak diset manual."""
     clean = (name or "").split(" - ")[0].strip()   # buang ekor '- Common Stock' dll

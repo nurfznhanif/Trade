@@ -18,8 +18,10 @@ try:
 except Exception:
     pass
 
-from trade.db import get_connection, init_db, insert_news        # noqa: E402
-from trade.news import build_news_query, fetch_news              # noqa: E402
+from trade.db import (backfill_title_keys, get_connection,        # noqa: E402
+                      init_db, insert_news)
+from trade.news import (build_news_query, fetch_idx_disclosures,  # noqa: E402
+                        fetch_news)
 
 
 def tier(conn, us_top: int):
@@ -41,11 +43,15 @@ def main():
     ap.add_argument("--us-top", type=int, default=250)
     ap.add_argument("--news-per", type=int, default=15, help="berita per saham")
     ap.add_argument("--sleep", type=float, default=0.6, help="jeda antar saham (detik)")
+    ap.add_argument("--disc-per", type=int, default=10, help="disclosure IDX per saham")
     ap.add_argument("--limit", type=int, help="ambil N saham pertama (buat tes)")
     args = ap.parse_args()
 
     conn = get_connection()
     init_db(conn)
+    bf = backfill_title_keys(conn)
+    if bf:
+        print(f"(isi title_key {bf} berita lama buat dedup)\n", flush=True)
 
     rows = tier(conn, args.us_top)
     if args.limit:
@@ -63,7 +69,16 @@ def main():
         except Exception as e:
             fail += 1
             if fail <= 5:
-                print(f"   ✗ {r['ticker']}: {type(e).__name__}", flush=True)
+                print(f"   ✗ {r['ticker']} news: {type(e).__name__}", flush=True)
+
+        if r["market"] == "IDX":                      # + disclosure resmi IDX
+            try:
+                disc = fetch_idx_disclosures(r["ticker"].replace(".JK", ""), limit=args.disc_per)
+                new_total += insert_news(conn, r["ticker"], disc)
+            except Exception as e:
+                fail += 1
+                if fail <= 5:
+                    print(f"   ✗ {r['ticker']} disc: {type(e).__name__}", flush=True)
 
         if i % 25 == 0 or i == total:
             elapsed = time.time() - t0
