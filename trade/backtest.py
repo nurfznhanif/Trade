@@ -28,6 +28,11 @@ class BTParams:
     reward_risk: float = 2.0      # (mode fixed) target = entry + rr*risiko
     min_history: int = 50
     sent_window_days: int = 14
+    # biaya transaksi (IDX): dipotong dari tiap trade
+    apply_costs: bool = True
+    fee_buy: float = 0.0015       # 0.15% beli
+    fee_sell: float = 0.0025      # 0.25% jual (fee + pajak)
+    slippage: float = 0.0010      # 0.10% per sisi (spread/impact)
 
 
 def _nn(x):
@@ -35,6 +40,15 @@ def _nn(x):
         return None
     x = float(x)
     return None if math.isnan(x) else x
+
+
+def net_return(gross, bt):
+    """Return bersih setelah biaya: bayar lebih pas beli, terima kurang pas jual."""
+    if not bt.apply_costs:
+        return gross
+    cb = bt.fee_buy + bt.slippage
+    cs = bt.fee_sell + bt.slippage
+    return (1.0 + gross) * (1.0 - cs) / (1.0 + cb) - 1.0
 
 
 def _sentiment_at(day_ord, news_ord, news_sent, window):
@@ -98,9 +112,10 @@ def backtest_ticker(dates_ord, highs, lows, closes, ma20, ma50, rsi_a, atr_a,
                 target = entry + bt.reward_risk * (entry - init_stop)
                 ei, epx, out = _sim_fixed(highs, lows, closes, i, init_stop, target, bt)
 
+            gross = float(epx) / entry - 1.0
             trades.append({
                 "entry_i": i, "exit_i": ei, "entry": entry, "exit": float(epx),
-                "ret": float(epx) / entry - 1.0, "bars": ei - i,
+                "gross": gross, "ret": net_return(gross, bt), "bars": ei - i,
                 "outcome": out, "n_news": n_news,
             })
             i = ei + 1

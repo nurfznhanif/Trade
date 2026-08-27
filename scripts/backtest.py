@@ -24,6 +24,7 @@ import numpy as np      # noqa: E402
 import pandas as pd     # noqa: E402
 
 from trade.backtest import BTParams, backtest_ticker, summarize   # noqa: E402
+from trade.backtest import net_return                             # noqa: E402
 from trade.config import DATA_DIR                                 # noqa: E402
 from trade.db import get_connection, init_db                      # noqa: E402
 from trade.signals import SignalParams                            # noqa: E402
@@ -58,12 +59,14 @@ def main():
     ap.add_argument("--limit", type=int)
     ap.add_argument("--exit-mode", choices=["trailing", "fixed"], default="trailing")
     ap.add_argument("--max-hold", type=int, default=40)
+    ap.add_argument("--no-costs", action="store_true", help="matiin biaya transaksi (liat gross)")
     args = ap.parse_args()
 
     conn = get_connection()
     init_db(conn)
     sp = SignalParams()
-    bt = BTParams(exit_mode=args.exit_mode, max_hold=args.max_hold)
+    bt = BTParams(exit_mode=args.exit_mode, max_hold=args.max_hold,
+                  apply_costs=not args.no_costs)
     t0 = time.time()
 
     q = "SELECT ticker, market FROM focus_list"
@@ -95,8 +98,10 @@ def main():
         "SELECT p.ticker, p.date, p.high, p.low, p.close FROM prices p "
         "JOIN focus_list f ON f.ticker = p.ticker ORDER BY p.ticker, p.date", conn)
     df = df[df["ticker"].isin(tset)]
+    ctxt = (f"biaya ON (beli {bt.fee_buy*100:.2f}%+jual {bt.fee_sell*100:.2f}%"
+            f"+slip {bt.slippage*100:.2f}%/sisi)") if bt.apply_costs else "biaya OFF (gross)"
     print(f"[{time.time()-t0:.1f}s] harga {len(df)} baris | exit={bt.exit_mode} "
-          f"max hold {bt.max_hold}hr | mulai hitung...\n", flush=True)
+          f"max hold {bt.max_hold}hr | {ctxt} | mulai hitung...\n", flush=True)
 
     all_trades = []
     base_by = {"US": [], "IDX": []}
@@ -116,7 +121,11 @@ def main():
         if n > bt.min_history + BASE_H:      # baseline acak (horizon tetap BASE_H)
             a = closes[bt.min_history:n - BASE_H]
             b = closes[bt.min_history + BASE_H:n]
-            base_by.setdefault(mk, []).extend((b / a - 1.0).tolist())
+            gross = b / a - 1.0
+            if bt.apply_costs:               # baseline juga kena biaya (adil)
+                cb, cs = bt.fee_buy + bt.slippage, bt.fee_sell + bt.slippage
+                gross = (1.0 + gross) * (1.0 - cs) / (1.0 + cb) - 1.0
+            base_by.setdefault(mk, []).extend(gross.tolist())
 
         ma20, ma50, rsi_a, atr_a = _indicators(close_s, high_s, low_s)
         no = news_by.get(ticker, ([], []))
