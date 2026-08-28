@@ -1,6 +1,6 @@
-"""Dashboard Trade — Streamlit, desain bersih. Baca data/trade.db langsung.
+"""Dashboard Trade — Streamlit, desain bersih (icon, tanpa emoji). Baca data/trade.db.
 
-Jalanin:  streamlit run dashboard.py   →  http://localhost:8501
+Jalanin:  streamlit run dashboard.py   ->  http://localhost:8501
 """
 import json
 import pathlib
@@ -17,7 +17,15 @@ from trade.config import DATA_DIR          # noqa: E402
 from trade.db import get_connection        # noqa: E402
 from trade.fundamentals import red_flags   # noqa: E402
 
-st.set_page_config(page_title="Trade IDX", page_icon="📈", layout="wide")
+st.set_page_config(page_title="Trade IDX", layout="wide")
+
+# --- icon SVG (garis, warisi warna via currentColor) ---
+IC_LOGO = ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" '
+           'stroke-linecap="round" stroke-linejoin="round"><path d="M22 7 13.5 15.5 8.5 10.5 2 17"/>'
+           '<path d="M16 7h6v6"/></svg>')
+IC_TARGET = ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+             'stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/>'
+             '<circle cx="12" cy="12" r="1.6"/></svg>')
 
 CSS = """
 <style>
@@ -28,7 +36,9 @@ html, body, [class*="css"], .stApp {font-family:'Inter',system-ui,sans-serif;}
 .stApp {background:#f6f7f9;}
 .block-container {padding-top:1.6rem; padding-bottom:3rem; max-width:1180px;}
 
-.hdr {display:flex; align-items:baseline; justify-content:space-between;}
+.hdr {display:flex; align-items:center; justify-content:space-between;}
+.hdr .brand {display:flex; align-items:center; gap:.5rem;}
+.hdr .brand svg {width:26px; height:26px; color:#16a34a;}
 .hdr h1 {font-size:1.7rem; font-weight:800; margin:0; letter-spacing:-.02em; color:#1a1f2e;}
 .hdr .date {color:#6b7280; font-size:.82rem; font-weight:600;}
 .sub {color:#8b93a1; font-size:.84rem; margin:.15rem 0 1.6rem;}
@@ -37,10 +47,14 @@ html, body, [class*="css"], .stApp {font-family:'Inter',system-ui,sans-serif;}
 .tile {background:#fff; border:1px solid #ecedf0; border-radius:16px; padding:1rem 1.2rem;}
 .tile .n {font-size:2rem; font-weight:800; line-height:1; color:#1a1f2e;}
 .tile .l {color:#8b93a1; font-size:.74rem; font-weight:600; text-transform:uppercase;
-          letter-spacing:.05em; margin-top:.4rem;}
+          letter-spacing:.05em; margin-top:.45rem; display:flex; align-items:center;}
 .tile.buy .n {color:#16a34a;} .tile.sell .n {color:#dc2626;}
+.dot {display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px;}
+.dot.buy {background:#16a34a;} .dot.hold {background:#9aa2b1;} .dot.sell {background:#dc2626;}
 
-.sec {font-size:1.1rem; font-weight:700; color:#1a1f2e; margin:.3rem 0 1rem;}
+.sec {display:flex; align-items:center; gap:.45rem; font-size:1.1rem; font-weight:700;
+      color:#1a1f2e; margin:.3rem 0 1rem;}
+.sec svg {width:19px; height:19px; color:#16a34a;}
 .sec small {color:#9099a6; font-weight:500; font-size:.8rem;}
 
 .grid {display:grid; grid-template-columns:repeat(auto-fill,minmax(224px,1fr)); gap:.85rem;}
@@ -55,7 +69,8 @@ html, body, [class*="css"], .stApp {font-family:'Inter',system-ui,sans-serif;}
 .card .bar {height:5px; background:#eef0f3; border-radius:99px; overflow:hidden; margin:.55rem 0 .4rem;}
 .card .bar span {display:block; height:100%; background:#16a34a;}
 .card .stats {color:#6b7280; font-size:.78rem;}
-.card .lvl {display:flex; gap:.7rem; font-size:.8rem; margin-top:.55rem; font-weight:700;}
+.card .lvl {display:flex; gap:.9rem; font-size:.85rem; margin-top:.55rem; font-weight:700;}
+.card .lvl b {font-size:.6rem; letter-spacing:.05em; opacity:.65; margin-right:3px; font-weight:700;}
 .card .lvl .s {color:#dc2626;} .card .lvl .t {color:#16a34a;}
 .card .why {color:#a3a9b5; font-size:.71rem; margin-top:.55rem; line-height:1.4;}
 
@@ -94,16 +109,21 @@ nfocus = len(q("SELECT ticker FROM focus_list"))
 asof = str(sig["asof"].max())
 
 st.markdown(
-    f'<div class="hdr"><h1>📈 Trade</h1><span class="date">Data per {asof}</span></div>'
+    f'<div class="hdr"><div class="brand">{IC_LOGO}<h1>Trade</h1></div>'
+    f'<span class="date">Data per {asof}</span></div>'
     f'<div class="sub">Dashboard swing IDX · momentum + sentimen + fundamental · '
     f'bukan nasihat keuangan</div>', unsafe_allow_html=True)
 
 st.markdown(
     f'<div class="tiles">'
-    f'<div class="tile buy"><div class="n">{nbuy}</div><div class="l">🟢 Sinyal Beli</div></div>'
-    f'<div class="tile"><div class="n">{nhold}</div><div class="l">⚪ Tahan</div></div>'
-    f'<div class="tile sell"><div class="n">{nsell}</div><div class="l">🔴 Jual / Hindari</div></div>'
-    f'<div class="tile"><div class="n">{nfocus}</div><div class="l">Saham dipantau</div></div>'
+    f'<div class="tile buy"><div class="n">{nbuy}</div>'
+    f'<div class="l"><span class="dot buy"></span>Sinyal Beli</div></div>'
+    f'<div class="tile"><div class="n">{nhold}</div>'
+    f'<div class="l"><span class="dot hold"></span>Tahan</div></div>'
+    f'<div class="tile sell"><div class="n">{nsell}</div>'
+    f'<div class="l"><span class="dot sell"></span>Jual / Hindari</div></div>'
+    f'<div class="tile"><div class="n">{nfocus}</div>'
+    f'<div class="l">Saham dipantau</div></div>'
     f'</div>', unsafe_allow_html=True)
 
 
@@ -116,24 +136,29 @@ def card(r):
         f'<span class="badge">BUY</span></div>'
         f'<div class="px">{rp(r["close"])}</div>'
         f'<div class="bar"><span style="width:{w:.0f}%"></span></div>'
-        f'<div class="stats">skor {r["score"]:.2f} · RSI {rsi} · sentimen {r["sent"]:+.2f}</div>'
-        f'<div class="lvl"><span class="s">🛑 {rp(r["stop"])}</span>'
-        f'<span class="t">🎯 {rp(r["target"])}</span></div>'
+        f'<div class="stats">skor {r["score"]:.2f} &nbsp;·&nbsp; RSI {rsi} '
+        f'&nbsp;·&nbsp; sentimen {r["sent"]:+.2f}</div>'
+        f'<div class="lvl"><span class="s"><b>STOP</b>{rp(r["stop"])}</span>'
+        f'<span class="t"><b>TARGET</b>{rp(r["target"])}</span></div>'
         f'<div class="why">{reasons}</div></div>')
 
 
 buys = sig[sig["action"] == "BUY"].sort_values("score", ascending=False)
 top = buys.head(12)
-extra = f" · menampilkan 12 dari {len(buys)}" if len(buys) > 12 else ""
-st.markdown(f'<div class="sec">🎯 Sinyal Beli Hari Ini <small>{extra}</small></div>',
+extra = f"menampilkan 12 dari {len(buys)}" if len(buys) > 12 else ""
+st.markdown(f'<div class="sec">{IC_TARGET} Sinyal Beli Hari Ini <small>{extra}</small></div>',
             unsafe_allow_html=True)
 st.markdown(f'<div class="grid">{"".join(card(r) for _, r in top.iterrows())}</div>',
             unsafe_allow_html=True)
 
 st.write("")
 st.write("")
-t_all, t_sent, t_fund, t_chart, t_paper = st.tabs(
-    ["📋 Semua Sinyal", "🧠 Sentimen", "💎 Fundamental", "📊 Chart", "📝 Paper"])
+t_all, t_sent, t_fund, t_chart, t_paper = st.tabs([
+    ":material/format_list_bulleted: Semua Sinyal",
+    ":material/newspaper: Sentimen",
+    ":material/account_balance: Fundamental",
+    ":material/show_chart: Chart",
+    ":material/wallet: Paper"])
 
 with t_all:
     acts = st.multiselect("Filter", ["BUY", "HOLD", "SELL"], default=["BUY", "SELL"])
@@ -163,9 +188,9 @@ with t_sent:
            "GROUP BY n.ticker HAVING berita>=3 ORDER BY sentimen DESC", (since,))
     conf = {"sentimen": st.column_config.NumberColumn("sentimen", format="%+.2f")}
     a, b = st.columns(2)
-    a.markdown("**🟢 Paling positif**")
+    a.markdown(":material/trending_up: **Paling positif**")
     a.dataframe(lb.head(10), hide_index=True, use_container_width=True, column_config=conf)
-    b.markdown("**🔴 Paling negatif**")
+    b.markdown(":material/trending_down: **Paling negatif**")
     b.dataframe(lb.tail(10).iloc[::-1], hide_index=True, use_container_width=True, column_config=conf)
     st.divider()
     tk = st.selectbox("Berita per saham", sorted(sig["ticker"].unique()))
@@ -197,7 +222,7 @@ with t_chart:
 with t_paper:
     csv = DATA_DIR / "paper_open_positions.csv"
     if csv.exists():
-        st.markdown("**📌 Posisi paper terbuka**")
+        st.markdown(":material/push_pin: **Posisi paper terbuka**")
         st.dataframe(pd.read_csv(csv), hide_index=True, use_container_width=True)
     else:
         st.info("Belum ada posisi paper — jalanin `scripts/paper_run.py`.")
