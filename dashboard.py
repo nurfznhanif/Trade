@@ -73,6 +73,17 @@ html, body, [class*="css"], .stApp {font-family:'Inter',system-ui,sans-serif;}
 .card .lvl b {font-size:.6rem; letter-spacing:.05em; opacity:.65; margin-right:3px; font-weight:700;}
 .card .lvl .s {color:#dc2626;} .card .lvl .t {color:#16a34a;}
 .card .why {color:#a3a9b5; font-size:.71rem; margin-top:.55rem; line-height:1.4;}
+.macro {background:#fff; border:1px solid #ecedf0; border-radius:16px; padding:.95rem 1.2rem;
+        margin-bottom:1.7rem; font-size:.88rem; color:#374151; line-height:1.5;}
+.macro .ml {font-size:.68rem; text-transform:uppercase; letter-spacing:.05em; color:#16a34a;
+            font-weight:700; margin-bottom:.4rem; display:flex; align-items:center; gap:.4rem;}
+.macro .ml svg {width:14px; height:14px;}
+.ai {margin-top:.6rem; padding:.5rem .6rem; border-radius:10px; font-size:.72rem; line-height:1.4;}
+.ai .v {display:block; font-weight:700; margin-bottom:.18rem;}
+.ai.good {background:#f0fdf4; color:#15803d;}
+.ai.danger {background:#fef2f2; color:#b91c1c;}
+.ai.caution {background:#fffbeb; color:#b45309;}
+.ai.neutral {background:#f6f8fa; color:#475569;}
 
 .stTabs [data-baseweb="tab-list"] {gap:.3rem;}
 .stTabs [data-baseweb="tab"] {font-weight:600;}
@@ -108,6 +119,15 @@ nsell = int((sig["action"] == "SELL").sum())
 nfocus = len(q("SELECT ticker FROM focus_list"))
 asof = str(sig["asof"].max())
 
+ana = {}
+_ap = DATA_DIR / "analysis.json"
+if _ap.exists():
+    try:
+        ana = json.loads(_ap.read_text(encoding="utf-8"))
+    except Exception:
+        ana = {}
+picks = ana.get("picks", {})
+
 st.markdown(
     f'<div class="hdr"><div class="brand">{IC_LOGO}<h1>Trade</h1></div>'
     f'<span class="date">Data per {asof}</span></div>'
@@ -126,13 +146,26 @@ st.markdown(
     f'<div class="l">Saham dipantau</div></div>'
     f'</div>', unsafe_allow_html=True)
 
+if ana.get("macro"):
+    st.markdown(
+        f'<div class="macro"><div class="ml">{IC_LOGO} Analisa Claude · {ana.get("generated", "")}'
+        f'</div>{ana["macro"]}</div>', unsafe_allow_html=True)
+
+
+FLAG_COLOR = {"good": "#16a34a", "danger": "#dc2626", "caution": "#f59e0b", "neutral": "#9aa2b1"}
+
 
 def card(r):
     reasons = " · ".join(json.loads(r["reasons"])) if r["reasons"] else ""
     w = max(0.0, min(float(r["score"]) / 3.0, 1.0)) * 100
     rsi = f'{r["rsi"]:.0f}' if pd.notna(r["rsi"]) else "—"
+    a = picks.get(r["ticker"])
+    border = FLAG_COLOR.get(a["flag"], "#16a34a") if a else "#16a34a"
+    ai = (f'<div class="ai {a["flag"]}"><span class="v">{a["verdict"]}</span>{a["note"]}</div>'
+          if a else "")
     return (
-        f'<div class="card"><div class="r1"><span class="tk">{code(r["ticker"])}</span>'
+        f'<div class="card" style="border-left-color:{border}">'
+        f'<div class="r1"><span class="tk">{code(r["ticker"])}</span>'
         f'<span class="badge">BUY</span></div>'
         f'<div class="px">{rp(r["close"])}</div>'
         f'<div class="bar"><span style="width:{w:.0f}%"></span></div>'
@@ -140,7 +173,7 @@ def card(r):
         f'&nbsp;·&nbsp; sentimen {r["sent"]:+.2f}</div>'
         f'<div class="lvl"><span class="s"><b>STOP</b>{rp(r["stop"])}</span>'
         f'<span class="t"><b>TARGET</b>{rp(r["target"])}</span></div>'
-        f'<div class="why">{reasons}</div></div>')
+        f'<div class="why">{reasons}</div>{ai}</div>')
 
 
 buys = sig[sig["action"] == "BUY"].sort_values("score", ascending=False)
