@@ -43,7 +43,7 @@ m[0].metric("Focus list", len(q("SELECT ticker FROM focus_list")))
 m[1].metric("🟢 BUY", int((sig.action == "BUY").sum()))
 m[2].metric("⚪ HOLD", int((sig.action == "HOLD").sum()))
 m[3].metric("🔴 SELL", int((sig.action == "SELL").sum()))
-m[4].metric("Data per", str(sig.asof.max()))
+m[4].metric("Data per", str(sig["asof"].max()))
 
 t_sig, t_sent, t_fund, t_chart, t_paper = st.tabs(
     ["📈 Sinyal", "🧠 Sentimen", "💎 Fundamental", "📊 Chart", "📝 Paper"])
