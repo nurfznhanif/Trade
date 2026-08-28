@@ -3,4 +3,5 @@ yfinance>=0.2.40      # harga saham (US + IDX via suffix .JK)
 feedparser>=6.0.11    # parse Google News RSS (berita, gratis tanpa API key)
 PyYAML>=6.0.1         # baca config/watchlist.yaml
 cloudscraper>=1.2.71  # nembus Cloudflare buat ambil daftar saham IDX resmi
+streamlit>=1.38       # dashboard (baca SQLite langsung)
 pandas>=2.2.0         # dependency yfinance, dipakai juga nanti buat teknikal
