@@ -81,6 +81,18 @@ CREATE TABLE IF NOT EXISTS paper_state (
     created        TEXT
 );
 
+CREATE TABLE IF NOT EXISTS fundamentals (
+    ticker      TEXT PRIMARY KEY,
+    per         REAL,      -- Price/Earnings
+    pbv         REAL,      -- Price/Book
+    roe         REAL,      -- Return on Equity
+    der         REAL,      -- Debt/Equity
+    div_yield   REAL,
+    margin      REAL,      -- profit margin
+    market_cap  REAL,
+    updated     TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_prices_ticker_date ON prices (ticker, date);
 CREATE INDEX IF NOT EXISTS idx_news_ticker_pub    ON news   (ticker, published);
 """
@@ -206,6 +218,28 @@ def insert_news(conn, ticker: str, items: Iterable[dict]) -> int:
     )
     conn.commit()
     return conn.total_changes - before
+
+
+def upsert_fundamentals_bulk(conn, items) -> int:
+    """Simpan/update rasio fundamental per saham."""
+    now = _now_iso()
+    rows = [(it["ticker"], it.get("per"), it.get("pbv"), it.get("roe"), it.get("der"),
+             it.get("div_yield"), it.get("margin"), it.get("market_cap"), now)
+            for it in items]
+    if not rows:
+        return 0
+    conn.executemany(
+        "INSERT INTO fundamentals "
+        "(ticker, per, pbv, roe, der, div_yield, margin, market_cap, updated) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(ticker) DO UPDATE SET "
+        "per=excluded.per, pbv=excluded.pbv, roe=excluded.roe, der=excluded.der, "
+        "div_yield=excluded.div_yield, margin=excluded.margin, "
+        "market_cap=excluded.market_cap, updated=excluded.updated",
+        rows,
+    )
+    conn.commit()
+    return len(rows)
 
 
 def get_or_init_paper_state(conn, inception_date: str, start_capital: float):

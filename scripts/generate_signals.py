@@ -17,6 +17,7 @@ except Exception:
 import pandas as pd   # noqa: E402
 
 from trade.db import get_connection, init_db, replace_signals   # noqa: E402
+from trade.fundamentals import red_flags                         # noqa: E402
 from trade.indicators import atr, rsi, sma                       # noqa: E402
 from trade.signals import SignalParams, decide                   # noqa: E402
 
@@ -47,6 +48,12 @@ def main():
         "WHERE sent_score IS NOT NULL AND (published IS NULL OR published >= ?) "
         "GROUP BY ticker", (since,))}
 
+    # bendera merah fundamental per saham (pagar anti-sampah)
+    fund_map = {}
+    for r in conn.execute("SELECT ticker, per, pbv, roe, der, div_yield, margin, "
+                          "market_cap FROM fundamentals"):
+        fund_map[r["ticker"]] = red_flags(dict(r))
+
     # harga seluruh focus list sekaligus
     df = pd.read_sql_query(
         "SELECT p.ticker, p.date, p.high, p.low, p.close FROM prices p "
@@ -55,6 +62,7 @@ def main():
     print(f"⚙️  Hitung sinyal buat {len(market_of)} saham focus list...\n", flush=True)
 
     out = []
+    blocked = 0
     p = SignalParams()
     for ticker, g in df.groupby("ticker", sort=False):
         closes = pd.to_numeric(g["close"], errors="coerce").to_numpy()
@@ -64,13 +72,16 @@ def main():
             continue
 
         s_avg, s_n = sent_map.get(ticker, (0.0, 0))
+        flags = fund_map.get(ticker)
         feat = {
             "close": float(closes[-1]),
             "ma20": sma(closes, 20), "ma50": sma(closes, 50),
             "rsi": rsi(closes, 14), "atr": atr(highs, lows, closes, 14),
-            "sent": s_avg or 0.0, "n_news": s_n or 0,
+            "sent": s_avg or 0.0, "n_news": s_n or 0, "fund_flags": flags,
         }
         d = decide(feat, p)
+        if flags and d["score"] >= p.buy_th:
+            blocked += 1
         out.append({
             "ticker": ticker, "market": market_of.get(ticker), "asof": g["date"].iloc[-1],
             "action": d["action"], "score": d["score"], "close": feat["close"],
@@ -89,6 +100,7 @@ def main():
     print(f" SINYAL — {n} saham dihitung")
     print("=" * 70)
     print(f"   🟢 BUY {counts['BUY']}   ⚪ HOLD {counts['HOLD']}   🔴 SELL {counts['SELL']}")
+    print(f"   🛡️  {blocked} calon BUY DIBLOK pagar fundamental (perusahaan rapuh)")
 
     def fmt(v, market):
         if v is None:
