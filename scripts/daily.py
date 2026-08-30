@@ -25,6 +25,7 @@ STEPS = [
     ("Skor sentimen", "score_news.py", []),
     ("Generate sinyal (pagar fundamental)", "generate_signals.py", ["--top", "10"]),
     ("Paper trading update", "paper_run.py", []),
+    ("Dump brief harian (bahan analysis.json)", "brief.py", ["--quiet"]),
 ]
 
 
