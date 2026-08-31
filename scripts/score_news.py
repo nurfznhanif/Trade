@@ -10,29 +10,34 @@ except Exception:
     pass
 
 from trade.db import get_connection, init_db, update_news_sentiment_bulk  # noqa: E402
-from trade.sentiment import LexiconScorer, strip_html                     # noqa: E402
+from trade.sentiment import get_scorer, strip_html                        # noqa: E402
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--all", action="store_true", help="skor ulang semua (bukan cuma yang kosong)")
+    ap.add_argument("--scorer", default="lexicon", help="lexicon (ringan) / indobert (NLP Indonesia)")
     args = ap.parse_args()
 
     conn = get_connection()
     init_db(conn)
-    scorer = LexiconScorer()
+    scorer = get_scorer(args.scorer)
 
     where = "" if args.all else "WHERE sent_scorer IS NULL"
     rows = conn.execute(f"SELECT id, title, summary FROM news {where}").fetchall()
-    print(f"🧠 Skor {len(rows)} berita pakai scorer '{scorer.name}'...\n")
+    print(f"🧠 Skor {len(rows)} berita pakai scorer '{scorer.name}'...\n", flush=True)
 
     updates = []
     counts = {"positive": 0, "negative": 0, "neutral": 0}
-    for r in rows:
-        text = f"{r['title'] or ''}. {strip_html(r['summary'])}"
-        res = scorer.score(text)
-        counts[res["label"]] += 1
-        updates.append((res["label"], res["score"], res["scorer"], r["id"]))
+    CHUNK = 200
+    for i in range(0, len(rows), CHUNK):
+        chunk = rows[i:i + CHUNK]
+        texts = [f"{r['title'] or ''}. {strip_html(r['summary'])}" for r in chunk]
+        for r, res in zip(chunk, scorer.score_many(texts)):
+            counts[res["label"]] += 1
+            updates.append((res["label"], res["score"], res["scorer"], r["id"]))
+        if len(rows) > CHUNK:
+            print(f"  ...{min(i + CHUNK, len(rows))}/{len(rows)}", flush=True)
 
     n = update_news_sentiment_bulk(conn, updates)
 

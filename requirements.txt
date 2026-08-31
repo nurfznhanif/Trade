@@ -5,3 +5,8 @@ PyYAML>=6.0.1         # baca config/watchlist.yaml
 cloudscraper>=1.2.71  # nembus Cloudflare buat ambil daftar saham IDX resmi
 streamlit>=1.38       # dashboard (baca SQLite langsung)
 pandas>=2.2.0         # dependency yfinance, dipakai juga nanti buat teknikal
+
+# (Eksperimental) scorer 'indobert' butuh torch+transformers (~GB). TAPI hasil tes Agu 2026:
+# model NLP Indonesia yang ada masih KALAH dari lexicon buat judul saham (sentimen finansial
+# != sentimen linguistik), jadi TIDAK dipakai default & sengaja tidak masuk requirement.
+# Mau eksperimen sendiri:  pip install torch transformers
