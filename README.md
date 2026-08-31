@@ -28,30 +28,30 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Alur harian (4 langkah)
+## Alur harian (3 langkah)
 
 ```bash
-# 1. Refresh SEMUA data + sinyal + paper trading (sekali gas)
-python scripts/daily.py
+# 1. Refresh SEMUA data + sinyal + brief + paper trading (sekali gas)
+python scripts/daily.py           # otomatis juga bikin data/brief_latest.md
 
-# 2. Dump brief: semua konteks per-saham jadi 1 file (data/brief_latest.md)
-python scripts/brief.py
+# 2. Di Claude Code, ketik:  /analisa
+#    -> Claude baca brief + BACA ARTIKEL BERITA ASLI (web) tiap kandidat
+#       (cross-check clickbait judul) -> tulis keputusan ke data/analysis.json
 
-# 3. Claude baca brief_latest.md -> tulis keputusan ke data/analysis.json
-#    (macro + entry/target/stop/reason per saham)
-
-# 4. Lihat dashboard
+# 3. Lihat dashboard
 streamlit run dashboard.py        # -> http://localhost:8501
 ```
 
-**Otomatis tiap pagi:** pasang [`run_daily.bat`](run_daily.bat) di Windows Task Scheduler
-(langkah 1 jalan sendiri, log ke `data/daily_log.txt`). Langkah 3 (Claude) masih manual —
-brief bikin cepat; opsi full-auto: panggil Claude API dari script.
+**Otomatis tiap pagi:** [`run_daily.bat`](run_daily.bat) sudah terpasang di Windows Task
+Scheduler (task `TradeDailyBrief`, Sen–Jum 08:00) — langkah 1 jalan sendiri, log ke
+`data/daily_log.txt`. Langkah 2 (`/analisa`) tetap manual *by design*: buat duit beneran,
+sesi Claude yang baca artikel & mutusin tiap pagi itu **fitur**, bukan kekurangan.
 
 ## Otak dashboard: `data/analysis.json`
 
 Dashboard menaruh **Keputusan Claude di depan**, sinyal mesin cuma pembanding.
-`analysis.json` diisi tiap hari berdasarkan `brief_latest.md`. Formatnya:
+`analysis.json` diisi lewat `/analisa`: Claude baca `brief_latest.md` **plus artikel
+berita aslinya** (via web, cross-check clickbait judul) — bukan cuma judul. Formatnya:
 
 ```json
 {
