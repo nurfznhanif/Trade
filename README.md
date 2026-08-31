@@ -47,6 +47,26 @@ Scheduler (task `TradeDailyBrief`, Sen–Jum 08:00) — langkah 1 jalan sendiri,
 `data/daily_log.txt`. Langkah 2 (`/analisa`) tetap manual *by design*: buat duit beneran,
 sesi Claude yang baca artikel & mutusin tiap pagi itu **fitur**, bukan kekurangan.
 
+## Ritme operasional (cheatsheet)
+
+Sistem udah kelar (Fase 0–5). Sekarang tinggal **dipakai** — low-maintenance.
+
+**Tiap pagi hari bursa:**
+- [ ] Data ketarik SENDIRI jam 08:00 (Task Scheduler `TradeDailyBrief`) — nggak usah ngapa-ngapain
+- [ ] Buka Claude Code → ketik **`/analisa`** (Claude baca data + artikel asli → update keputusan)
+- [ ] `streamlit run dashboard.py` → lihat **Keputusan Claude**
+- [ ] Kalau trading: eksekusi di **broker sendiri**, lalu catat di tab **Jurnal**
+
+**Mingguan:**
+- [ ] `python scripts/fetch_fundamentals.py` (fundamental berubah pelan)
+- [ ] Sesekali `python scripts/screen.py` (refresh saham likuid → `focus_list`)
+
+**Fase sekarang: BUKTIKAN dulu.** Jalur wajib: backtest → paper → **duit kecil + jurnal** → baru
+scale modal. Biarin paper trading + jurnal jalan berminggu-minggu, pantau: win rate naik?
+disiplin stop? keputusan mana yang cuan? **Kumpulin bukti SEBELUM nambah modal.**
+
+> ⚠️ Bukan nasihat keuangan. Eksekusi & keputusan di tangan kamu; alat ini bantu analisa + catat.
+
 ## Jurnal trading (Fase 5)
 
 Catat trade **REAL** (duit kecil) buat evaluasi disiplin — **bukan nasihat / eksekusi order**.
