@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT))
 
 from trade.config import DATA_DIR          # noqa: E402
 from trade.db import get_connection        # noqa: E402
-from trade.fundamentals import red_flags   # noqa: E402
+from trade.fundamentals import red_flags, sanitize   # noqa: E402
 
 st.set_page_config(page_title="Trade IDX", layout="wide")
 
@@ -214,10 +214,24 @@ with t_fund:
     if f.empty:
         st.info("Belum ada data fundamental.")
     else:
-        f["bendera merah"] = f.apply(lambda r: "; ".join(red_flags(r.to_dict())), axis=1)
-        f["saham"] = f["ticker"].map(code)
-        st.dataframe(f[["saham", "per", "pbv", "roe", "der", "div_yield", "margin", "bendera merah"]],
-                     hide_index=True, use_container_width=True, height=440)
+        recs = f.to_dict("records")
+        fs = pd.DataFrame([sanitize(r) for r in recs])          # buang data ngaco -> kosong
+        fs["bendera merah"] = ["; ".join(red_flags(r)) for r in recs]
+        fs["saham"] = fs["ticker"].map(code)
+        for pc in ["roe", "div_yield", "margin"]:               # fraksi -> persen buat tampil
+            fs[pc] = pd.to_numeric(fs[pc], errors="coerce") * 100
+        st.caption("Rasio yfinance yang ngaco (mis. PBV ratusan ribu) disaring jadi kosong.")
+        st.dataframe(
+            fs[["saham", "per", "pbv", "roe", "der", "div_yield", "margin", "bendera merah"]],
+            hide_index=True, use_container_width=True, height=440,
+            column_config={
+                "per": st.column_config.NumberColumn("PER", format="%.1f"),
+                "pbv": st.column_config.NumberColumn("PBV", format="%.2f"),
+                "roe": st.column_config.NumberColumn("ROE %", format="%.1f"),
+                "der": st.column_config.NumberColumn("DER %", format="%.0f"),
+                "div_yield": st.column_config.NumberColumn("Div yield %", format="%.2f"),
+                "margin": st.column_config.NumberColumn("Margin %", format="%.1f"),
+            })
 
 with t_chart:
     if not sig.empty:

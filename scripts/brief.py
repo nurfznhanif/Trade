@@ -27,7 +27,7 @@ import pandas as pd  # noqa: E402
 
 from trade.config import DATA_DIR  # noqa: E402
 from trade.db import get_connection  # noqa: E402
-from trade.fundamentals import red_flags  # noqa: E402
+from trade.fundamentals import red_flags, sanitize  # noqa: E402
 
 PUMP_1MO = 0.60      # naik >60% sebulan = wajib curiga pump
 PUMP_PER = 200.0     # PER absurd = cangkang / tanpa laba
@@ -127,9 +127,10 @@ def main():
         tk = s["ticker"]
         t = _tech(conn, tk)
         f = funds.get(tk, {})
+        fs = sanitize(f) if f else {}          # buang rasio ngaco + betulin satuan div_yield
         rf = red_flags(f) if f else []
         chg = t.get("chg1mo")
-        per = f.get("per")
+        per = fs.get("per")
 
         tags = []
         if chg is not None and chg >= PUMP_1MO:
@@ -157,9 +158,9 @@ def main():
         w(f"    Mesin  stop {_rp(s['stop'])}  target {_rp(s['target'])}   "
           f"sentimen {_f(s['sent'])} ({int(s['n_news'] or 0)} berita)")
         if f:
-            w(f"    Fund   PER {_f(per)}  PBV {_f(f.get('pbv'))}  "
-              f"ROE {_pct(f.get('roe'))}  DER {_f(f.get('der'), 0)}  "
-              f"margin {_pct(f.get('margin'))}  divyield {_pct(f.get('div_yield'))}")
+            w(f"    Fund   PER {_f(per)}  PBV {_f(fs.get('pbv'))}  "
+              f"ROE {_pct(fs.get('roe'))}  DER {_f(fs.get('der'), 0)}  "
+              f"margin {_pct(fs.get('margin'))}  divyield {_pct(fs.get('div_yield'))}")
         else:
             w("    Fund   (belum ada data fundamental)")
         hl = _headlines(conn, tk)
