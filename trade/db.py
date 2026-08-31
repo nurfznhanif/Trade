@@ -93,6 +93,21 @@ CREATE TABLE IF NOT EXISTS fundamentals (
     updated     TEXT
 );
 
+CREATE TABLE IF NOT EXISTS journal (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker      TEXT NOT NULL,
+    entry_date  TEXT NOT NULL,        -- YYYY-MM-DD
+    entry       REAL NOT NULL,        -- harga masuk
+    lot         REAL NOT NULL,        -- jumlah lot (1 lot IDX = 100 lembar)
+    stop        REAL,
+    target      REAL,
+    thesis      TEXT,                 -- alasan masuk (mis. "ikut /analisa CMRY")
+    exit_date   TEXT,
+    exit        REAL,
+    status      TEXT DEFAULT 'open',  -- open / closed
+    created     TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_prices_ticker_date ON prices (ticker, date);
 CREATE INDEX IF NOT EXISTS idx_news_ticker_pub    ON news   (ticker, published);
 """

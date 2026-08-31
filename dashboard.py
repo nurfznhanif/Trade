@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT))
 from trade.config import DATA_DIR          # noqa: E402
 from trade.db import get_connection        # noqa: E402
 from trade.fundamentals import red_flags, sanitize   # noqa: E402
+from trade.journal import pl as jpl, summary as jsummary   # noqa: E402
 
 st.set_page_config(page_title="Trade IDX", layout="wide")
 
@@ -162,12 +163,13 @@ else:
 
 st.write("")
 st.write("")
-t_mesin, t_sent, t_fund, t_chart, t_paper = st.tabs([
+t_mesin, t_sent, t_fund, t_chart, t_paper, t_jurnal = st.tabs([
     ":material/settings: Sinyal Mesin (teknikal)",
     ":material/newspaper: Sentimen",
     ":material/account_balance: Fundamental",
     ":material/show_chart: Chart",
-    ":material/wallet: Paper"])
+    ":material/wallet: Paper",
+    ":material/book: Jurnal"])
 
 with t_mesin:
     st.caption("Sinyal rule-based (MA/RSI/ATR) — buat PEMBANDING. Yang di atas keputusan Claude.")
@@ -250,3 +252,48 @@ with t_paper:
         st.dataframe(pd.read_csv(csv), hide_index=True, use_container_width=True)
     else:
         st.info("Belum ada posisi paper.")
+
+with t_jurnal:
+    st.caption("Trade REAL kamu (Fase 5 · duit kecil). Bukan nasihat — catat lewat "
+               "`python scripts/journal.py add TICKER --price P --lot N`.")
+    jj = q("SELECT * FROM journal")
+    if jj.empty:
+        st.info("Jurnal masih kosong. Tambah trade lewat scripts/journal.py.")
+    else:
+        lastpx = q("SELECT ticker, close FROM prices WHERE (ticker, date) IN "
+                   "(SELECT ticker, MAX(date) FROM prices GROUP BY ticker)")
+        pxmap = dict(zip(lastpx["ticker"], lastpx["close"]))
+        sigmap = dict(zip(sig["ticker"], sig["action"])) if not sig.empty else {}
+        recs = jj.to_dict("records")
+        s = jsummary(recs, pxmap)
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Realized", rp(s["realized"]))
+        m2.metric("Open P/L", rp(s["unreal"]))
+        m3.metric("Total", rp(s["total"]), f"{s['closed']} closed · win {s['win_rate']*100:.0f}%")
+
+        def _row(r, cur):
+            p = jpl(r, cur)
+            ret = p["net_pct"] * 100 if p["net_pct"] is not None else None
+            return {"saham": code(r["ticker"]), "lot": r["lot"], "entry": r["entry"],
+                    "sekarang/keluar": p["px"], "return %": ret, "P/L": p["pl_rp"],
+                    "stop": r["stop"], "sistem": sigmap.get(r["ticker"], "-"),
+                    "alarm": "⚠️ < stop" if (r["stop"] and cur and cur < r["stop"]) else ""}
+
+        cfg = {
+            "entry": st.column_config.NumberColumn("entry", format="Rp %.0f"),
+            "sekarang/keluar": st.column_config.NumberColumn("skrg/keluar", format="Rp %.0f"),
+            "return %": st.column_config.NumberColumn("return %", format="%.2f"),
+            "P/L": st.column_config.NumberColumn("P/L", format="Rp %.0f"),
+            "stop": st.column_config.NumberColumn("stop", format="Rp %.0f"),
+        }
+        opn = [r for r in recs if r["status"] == "open"]
+        cld = [r for r in recs if r["status"] == "closed"]
+        if opn:
+            st.markdown(":material/push_pin: **Posisi terbuka** (vs sinyal sistem)")
+            st.dataframe(pd.DataFrame([_row(r, pxmap.get(r["ticker"])) for r in opn]),
+                         hide_index=True, use_container_width=True, column_config=cfg)
+        if cld:
+            st.markdown(":material/check_circle: **Sudah ditutup**")
+            st.dataframe(pd.DataFrame([_row(r, None) for r in cld]).drop(columns=["sistem", "alarm"]),
+                         hide_index=True, use_container_width=True, column_config=cfg)

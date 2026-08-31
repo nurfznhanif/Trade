@@ -8,7 +8,7 @@ Kode tetap market-agnostic (atur di [`trade/config.py`](trade/config.py) → `MA
 > ⚠️ **Bukan nasihat keuangan.** Sistem ini alat bantu keputusan, bukan mesin ATM.
 > Jalur wajib sebelum pakai duit beneran: **backtest → paper trading → duit kecil.**
 
-## Status: Fase 0–4 ✅ + Dashboard + Brief — operasional
+## Status: Fase 0–5 ✅ + Dashboard + Brief — operasional
 
 | Fase | Isi | Status |
 |------|-----|--------|
@@ -18,7 +18,7 @@ Kode tetap market-agnostic (atur di [`trade/config.py`](trade/config.py) → `MA
 | 3 | Backtest engine (point-in-time, anti-lookahead, trailing stop + biaya) | ✅ |
 | 4 | Paper trading (portfolio FULL vs TECH + benchmark, A/B sentimen) | ✅ |
 | — | Dashboard Streamlit + Keputusan Claude (`analysis.json`) + brief harian | ✅ |
-| 5 | Live (duit kecil) + jurnal + validasi alpha | ⏳ berikutnya |
+| 5 | Jurnal trading real (duit kecil): catat entry/exit, P/L, evaluasi vs sinyal | ✅ tooling |
 
 ## Setup
 
@@ -46,6 +46,23 @@ streamlit run dashboard.py        # -> http://localhost:8501
 Scheduler (task `TradeDailyBrief`, Sen–Jum 08:00) — langkah 1 jalan sendiri, log ke
 `data/daily_log.txt`. Langkah 2 (`/analisa`) tetap manual *by design*: buat duit beneran,
 sesi Claude yang baca artikel & mutusin tiap pagi itu **fitur**, bukan kekurangan.
+
+## Jurnal trading (Fase 5)
+
+Catat trade **REAL** (duit kecil) buat evaluasi disiplin — **bukan nasihat / eksekusi order**.
+P/L pakai model biaya IDX yang sama dengan paper/backtest. 1 lot = 100 lembar.
+
+```bash
+# catat posisi baru
+python scripts/journal.py add CMRY --price 4690 --lot 2 --stop 4480 --note "ikut /analisa"
+# tutup posisi (id dari report)
+python scripts/journal.py close 1 --price 4900
+# laporan P/L + bandingin sama sinyal sistem
+python scripts/journal.py
+```
+
+Muncul juga di tab **Jurnal** dashboard: posisi terbuka + P/L + sinyal sistem terkini +
+alarm kalau harga di bawah stop. Data jurnal **privat** (di `data/trade.db`, gitignored).
 
 ## Otak dashboard: `data/analysis.json`
 
@@ -85,6 +102,7 @@ trade/            package inti (market-agnostic)
   signals.py      signal engine (teknikal + sentimen)
   backtest.py     backtest point-in-time (trailing + biaya)
   paper.py        simulasi portfolio paper
+  journal.py      jurnal trading real (Fase 5): P/L + evaluasi vs sinyal
   screener.py     screener likuiditas -> focus_list
   universe.py     ambil daftar saham IDX resmi
 scripts/          entry point (daily.py orkestrator, brief.py, dll.)
