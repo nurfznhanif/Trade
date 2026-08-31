@@ -20,8 +20,7 @@ except Exception:
 
 from trade.db import (backfill_title_keys, get_connection,        # noqa: E402
                       init_db, insert_news)
-from trade.news import (build_news_query, fetch_idx_disclosures,  # noqa: E402
-                        fetch_news)
+from trade.news import build_news_query, fetch_news  # noqa: E402
 
 
 def tier(conn, us_top: int):
@@ -43,7 +42,6 @@ def main():
     ap.add_argument("--us-top", type=int, default=250)
     ap.add_argument("--news-per", type=int, default=15, help="berita per saham")
     ap.add_argument("--sleep", type=float, default=0.6, help="jeda antar saham (detik)")
-    ap.add_argument("--disc-per", type=int, default=10, help="disclosure IDX per saham")
     ap.add_argument("--limit", type=int, help="ambil N saham pertama (buat tes)")
     args = ap.parse_args()
 
@@ -71,14 +69,8 @@ def main():
             if fail <= 5:
                 print(f"   ✗ {r['ticker']} news: {type(e).__name__}", flush=True)
 
-        if r["market"] == "IDX":                      # + disclosure resmi IDX
-            try:
-                disc = fetch_idx_disclosures(r["ticker"].replace(".JK", ""), limit=args.disc_per)
-                new_total += insert_news(conn, r["ticker"], disc)
-            except Exception as e:
-                fail += 1
-                if fail <= 5:
-                    print(f"   ✗ {r['ticker']} disc: {type(e).__name__}", flush=True)
+        # (disclosure resmi IDX dilepas: idx.co.id di belakang Cloudflare -> 403.
+        #  Google News RSS udah nutup beritanya. Lihat trade/news.fetch_idx_disclosures.)
 
         if i % 25 == 0 or i == total:
             elapsed = time.time() - t0

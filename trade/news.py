@@ -55,9 +55,14 @@ def _get_scraper():
 
 
 def fetch_idx_disclosures(code: str, limit: int = 12) -> list[dict]:
-    """Pengumuman/keterbukaan resmi IDX per emiten (event: dividen, RUPS, suspensi, dll).
+    """⚠️ NONAKTIF (Agu 2026): idx.co.id di belakang Cloudflare — bahkan homepage balikin
+    403 'Just a moment' ke cloudscraper (challenge JS nggak ketembus tanpa browser sungguhan).
+    Fungsi disimpen buat revive nanti (butuh Playwright/undetected-chromedriver atau layanan
+    anti-bot). Sementara Google News RSS udah nutup beritanya, jadi tier ini DILEPAS dari
+    pipeline harian (lihat scripts/fetch_news_focus.py).
 
-    `code` = kode emiten tanpa .JK (mis. 'BBCA'). Sumber resmi, gratis (via cloudscraper).
+    Pengumuman/keterbukaan resmi IDX per emiten (event: dividen, RUPS, suspensi, dll).
+    `code` = kode emiten tanpa .JK (mis. 'BBCA').
     """
     url = ("https://www.idx.co.id/primary/ListedCompany/GetAnnouncement"
            f"?indexFrom=1&pageSize={limit}&dateFrom=&dateTo=&lang=id&keyword=&KodeEmiten={code}")
