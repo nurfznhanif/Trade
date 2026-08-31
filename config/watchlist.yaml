@@ -1,31 +1,19 @@
 # ============================================================
-# WATCHLIST — daftar saham yang dipantau
+# WATCHLIST — daftar saham yang dipantau (FOKUS: IDX)
 # ============================================================
 # Tiap saham punya:
-#   ticker      : kode saham. US = biasa (AAPL). IDX = pakai suffix .JK (BBCA.JK)
+#   ticker      : kode saham IDX, pakai suffix .JK (mis. BBCA.JK)
 #   name        : nama buat ditampilin
-#   market      : US atau IDX
+#   market      : IDX
 #   news_query  : kata kunci buat cari berita di Google News
-#   news_lang   : bahasa berita -> en (Inggris) atau id (Indonesia)
+#   news_lang   : id (Indonesia)
 #
-# Mau nambah saham? tinggal copy satu blok di bawah, ganti isinya.
+# Universe utama diisi OTOMATIS oleh screener (scripts/screen.py) -> focus_list.
+# File ini cuma buat pin/tambah manual. US sudah TIDAK dipakai (project fokus IDX;
+# diatur di trade/config.py -> MARKETS = ["IDX"]).
 # ============================================================
 
 instruments:
-  # --- Saham US ---
-  - ticker: AAPL
-    name: Apple Inc.
-    market: US
-    news_query: Apple AAPL stock
-    news_lang: en
-
-  - ticker: NVDA
-    name: NVIDIA Corporation
-    market: US
-    news_query: Nvidia NVDA stock
-    news_lang: en
-
-  # --- Saham Indonesia (IDX) ---
   - ticker: BBCA.JK
     name: Bank Central Asia
     market: IDX
