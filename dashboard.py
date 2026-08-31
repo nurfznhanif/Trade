@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT))
 from trade.config import DATA_DIR          # noqa: E402
 from trade.db import get_connection        # noqa: E402
 from trade.fundamentals import red_flags, sanitize   # noqa: E402
-from trade.journal import pl as jpl, summary as jsummary   # noqa: E402
+from trade.journal import add_trade, close_trade, pl as jpl, summary as jsummary   # noqa: E402
 
 st.set_page_config(page_title="Trade IDX", layout="wide")
 
@@ -254,11 +254,33 @@ with t_paper:
         st.info("Belum ada posisi paper.")
 
 with t_jurnal:
-    st.caption("Trade REAL kamu (Fase 5 · duit kecil). Bukan nasihat — catat lewat "
-               "`python scripts/journal.py add TICKER --price P --lot N`.")
+    st.caption("Trade REAL kamu (Fase 5 · duit kecil). Bukan nasihat / eksekusi — "
+               "cuma catat & evaluasi disiplin.")
+
     jj = q("SELECT * FROM journal")
+
+    with st.expander("➕  Catat posisi baru", expanded=jj.empty):
+        with st.form("j_add", clear_on_submit=True):
+            a1, a2, a3 = st.columns(3)
+            f_tk = a1.text_input("Saham", placeholder="mis. CMRY")
+            f_price = a2.number_input("Harga entry", min_value=0.0, step=5.0, format="%.0f")
+            f_lot = a3.number_input("Lot (×100 lembar)", min_value=0.0, step=1.0,
+                                    value=1.0, format="%.0f")
+            a4, a5 = st.columns(2)
+            f_stop = a4.number_input("Stop (opsional)", min_value=0.0, step=5.0, format="%.0f")
+            f_tgt = a5.number_input("Target (opsional)", min_value=0.0, step=5.0, format="%.0f")
+            f_note = st.text_input("Catatan (opsional)", placeholder="mis. ikut /analisa CMRY")
+            if st.form_submit_button("Catat posisi", use_container_width=True, type="primary"):
+                if f_tk.strip() and f_price > 0 and f_lot > 0:
+                    add_trade(get_connection(), f_tk, f_price, f_lot,
+                              stop=f_stop or None, target=f_tgt or None, thesis=f_note or None)
+                    st.cache_data.clear()
+                    st.rerun()
+                else:
+                    st.warning("Minimal isi: Saham, Harga entry, Lot.")
+
     if jj.empty:
-        st.info("Jurnal masih kosong. Tambah trade lewat scripts/journal.py.")
+        st.info("Jurnal masih kosong — catat trade pertama lewat form di atas. 👆")
     else:
         lastpx = q("SELECT ticker, close FROM prices WHERE (ticker, date) IN "
                    "(SELECT ticker, MAX(date) FROM prices GROUP BY ticker)")
@@ -293,6 +315,20 @@ with t_jurnal:
             st.markdown(":material/push_pin: **Posisi terbuka** (vs sinyal sistem)")
             st.dataframe(pd.DataFrame([_row(r, pxmap.get(r["ticker"])) for r in opn]),
                          hide_index=True, use_container_width=True, column_config=cfg)
+            with st.expander("✔  Tutup posisi"):
+                opts = {f"#{r['id']} · {code(r['ticker'])} @ {rp(r['entry'])}": r["id"]
+                        for r in opn}
+                pick = st.selectbox("Pilih posisi", list(opts), key="j_close_pick")
+                x1, x2 = st.columns([2, 1])
+                x_price = x1.number_input("Harga keluar", min_value=0.0, step=5.0,
+                                          format="%.0f", key="j_close_price")
+                if x2.button("Tutup", use_container_width=True, type="primary"):
+                    if x_price > 0:
+                        close_trade(get_connection(), opts[pick], x_price)
+                        st.cache_data.clear()
+                        st.rerun()
+                    else:
+                        st.warning("Isi harga keluar dulu.")
         if cld:
             st.markdown(":material/check_circle: **Sudah ditutup**")
             st.dataframe(pd.DataFrame([_row(r, None) for r in cld]).drop(columns=["sistem", "alarm"]),
