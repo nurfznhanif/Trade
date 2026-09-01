@@ -4,6 +4,7 @@ Jalanin:  streamlit run dashboard.py  ->  http://localhost:8501
 """
 import json
 import pathlib
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -121,6 +122,26 @@ st.markdown(
     f'<span class="date">Analisa {ana.get("generated", "—")}</span></div>'
     f'<div class="sub">Keputusan oleh Claude (LLM) · saham IDX · bukan nasihat keuangan</div>',
     unsafe_allow_html=True)
+
+with st.expander("⚙️  Aksi cepat — refresh data / buat brief"):
+    st.caption("Data ketarik OTOMATIS tiap pagi 08:00 (scheduler). Tombol ini cuma buat on-demand.")
+    ac1, ac2 = st.columns(2)
+    if ac1.button("🔄  Refresh data sekarang  (~6 menit)", use_container_width=True):
+        with st.status("Menarik harga + makro + berita + sinyal + brief...", expanded=True) as _s:
+            _r = subprocess.run([sys.executable, str(ROOT / "scripts" / "daily.py")],
+                                capture_output=True, text=True, encoding="utf-8", errors="replace")
+            _s.code((_r.stdout or "")[-1500:])
+            _s.update(label="Selesai" if _r.returncode == 0 else "Selesai (ada warning)",
+                      state="complete")
+        st.cache_data.clear()
+        st.rerun()
+    if ac2.button("📄  Buat brief (bahan /analisa)", use_container_width=True):
+        with st.spinner("Bikin brief..."):
+            subprocess.run([sys.executable, str(ROOT / "scripts" / "brief.py"), "--quiet"],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+        st.success("Brief siap → `data/brief_latest.md`. Sekarang ketik `/analisa` di Claude Code.")
+    st.info("**Update keputusan Claude:** ketik `/analisa` di Claude Code — dia baca brief + artikel "
+            "lalu nulis keputusan. Ini butuh Claude (LLM), jadi **nggak bisa dari tombol**. Gratis, pakai langgananmu.")
 
 nbeli = sum(1 for c in calls if c["action"].startswith("BELI"))
 ntunggu = sum(1 for c in calls if "TUNGGU" in c["action"])
