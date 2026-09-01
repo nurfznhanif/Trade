@@ -77,12 +77,19 @@ P/L pakai model biaya IDX yang sama dengan paper/backtest. 1 lot = 100 lembar.
 python scripts/journal.py add CMRY --price 4690 --lot 2 --stop 4480 --note "ikut /analisa"
 # tutup posisi (id dari report)
 python scripts/journal.py close 1 --price 4900
-# laporan P/L + bandingin sama sinyal sistem
+# laporan P/L + trailing stop + bandingin sama sinyal sistem
 python scripts/journal.py
+# kalkulator ukuran posisi (risk-based): berapa lot biar risiko terkontrol
+python scripts/journal.py size --capital 1500000 --entry 4690 --stop 4480 --risk 2
 ```
 
-Muncul juga di tab **Jurnal** dashboard: posisi terbuka + P/L + sinyal sistem terkini +
-alarm kalau harga di bawah stop. Data jurnal **privat** (di `data/trade.db`, gitignored).
+Muncul juga di tab **Jurnal** dashboard: posisi terbuka + P/L + **trailing stop** (di mana
+keluar, biar konsisten sama backtest) + sinyal sistem + kalkulator **sizing** (berapa lot).
+Data jurnal **privat** (di `data/trade.db`, gitignored).
+
+> **Kenapa trailing & sizing penting:** backtest nunjukin exit *trailing* jauh ngalahin *target fixed*
+> (avg winner 20% vs 14% — motong pemenang = buang edge). Dan sizing risk-based bikin tiap kekalahan
+> ~sama & terkontrol. Entry cuma ~20% dari hasil; **risk & exit ~80%.**
 
 ## Otak dashboard: `data/analysis.json`
 
@@ -119,6 +126,7 @@ trade/            package inti (market-agnostic)
   sentiment.py    skor sentimen berita
   fundamentals.py rasio + bendera merah (pagar anti-sampah)
   macro.py        regime IHSG (vs MA200) + indikator makro (kurs/komoditas/global)
+  risk.py         sizing (risk-based) + trailing stop (exit disiplin, samain backtest)
   indicators.py   MA / RSI / ATR
   signals.py      signal engine (teknikal + sentimen)
   backtest.py     backtest point-in-time (trailing + biaya)

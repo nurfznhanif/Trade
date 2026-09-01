@@ -51,7 +51,14 @@ IHSG belum ada di DB, jadi tone makro dibaca dari berita.
 - entry/target/stop = integer (HINDARI → `null`).
 
 **Aturan keputusan:**
-- entry dekat harga sekarang / area support; target ke high berikutnya; stop di bawah support 20-hari.
+- entry dekat harga sekarang / area support; stop di bawah support 20-hari.
+- **EXIT = TRAILING (penting):** `target` itu CHECKPOINT pertama, BUKAN tempat jual mati.
+  Backtest: trailing JAUH > fixed target (avg winner 20% vs 14%, max 425% vs 189%). Di `reason`
+  ingetin: "biarin lari — geser stop naik (trailing high−3×ATR), jangan jual pas kena target".
+- **MAKRO (regime):** baca REGIME IHSG di brief. Risk-off = lebih SELEKTIF + ukuran lebih KECIL
+  (BUKAN stop total — backtest: risk-off masih rata2 +2,86%). Tulis regime + sikap di field `macro`.
+- **SIZING:** ingetin user pakai risk-based (risiko 1–2% modal/trade); jarak entry↔stop yang
+  nentuin lot, bukan nebak (`python scripts/journal.py size ...` atau kalkulator di dashboard).
 - RSI > 70 **atau** sudah +25–30% sebulan → `TUNGGU PULLBACK` (jangan kejar).
 - Insider selling / rugi / PER cangkang / pump / suspensi → `HINDARI` atau `caution`, **walau skor mesin hijau**.
 - Data fundamental yfinance yang ekstrem/ngaco (PBV/DER/divyield absurd) → ABAIKAN, sebut kalau relevan.

@@ -23,6 +23,7 @@ except Exception:
 
 from trade.db import get_connection, init_db            # noqa: E402
 from trade.journal import add_trade, close_trade, norm_ticker, pl, summary  # noqa: E402
+from trade.risk import position_size, trailing_stop_level  # noqa: E402
 
 
 def _rp(x):
@@ -54,6 +55,18 @@ def cmd_close(conn, a):
           else f"⚠️  #{a.id} gak ketemu / udah closed")
 
 
+def cmd_size(conn, a):
+    r = position_size(a.capital, a.entry, a.stop, risk_pct=a.risk / 100.0)
+    print(f"📐 Sizing — modal {_rp(a.capital)}, risiko {a.risk:g}%/trade, "
+          f"entry {_rp(a.entry)}, stop {_rp(a.stop)}:")
+    if r["lot"] <= 0:
+        print(f"   ⚠️  {r['note']}")
+        return
+    print(f"   → BELI {r['lot']} lot ({r['shares']:.0f} lembar) = {_rp(r['modal'])}")
+    print(f"   → kalau kena stop: rugi {_rp(r['risk_rp'])} "
+          f"({r['risk_pct_real']*100:.1f}% modal) — terkontrol")
+
+
 def cmd_report(conn, _a):
     rows = [dict(r) for r in conn.execute(
         "SELECT * FROM journal ORDER BY entry_date DESC, id DESC")]
@@ -67,14 +80,15 @@ def cmd_report(conn, _a):
     cl = [r for r in rows if r["status"] == "closed"]
 
     if op:
-        print("\n📌 POSISI TERBUKA")
+        print("\n📌 POSISI TERBUKA  (trail = stop trailing sekarang; jual kalau harga < trail)")
         for r in op:
             cur = price_of.get(r["ticker"])
             p = pl(r, cur)
-            warn = "  ⚠️ DI BAWAH STOP" if (r["stop"] and cur and cur < r["stop"]) else ""
+            tr = trailing_stop_level(conn, r["ticker"], r["entry_date"], r["stop"])["trail"]
+            warn = "  ⚠️ KELUAR (harga<trail)" if (tr and cur and cur < tr) else ""
             print(f"  #{r['id']:<3} {r['ticker']:11} {r['lot']:>4g} lot @ {_rp(r['entry'])}"
-                  f"  → now {_rp(cur):>9}  {_pct(p['net_pct']):>8}  P/L {_rp(p['pl_rp']):>12}"
-                  f"   [sistem: {sig.get(r['ticker'], '-')}]{warn}")
+                  f"  now {_rp(cur)}  {_pct(p['net_pct'])}  P/L {_rp(p['pl_rp'])}"
+                  f"  trail {_rp(tr)}  [{sig.get(r['ticker'], '-')}]{warn}")
 
     if cl:
         print("\n✅ SUDAH DITUTUP")
@@ -114,10 +128,16 @@ def main():
 
     sub.add_parser("report", help="laporan (default)")
 
+    z = sub.add_parser("size", help="kalkulator ukuran posisi (risk-based)")
+    z.add_argument("--capital", type=float, required=True, help="modal (Rp)")
+    z.add_argument("--entry", type=float, required=True)
+    z.add_argument("--stop", type=float, required=True)
+    z.add_argument("--risk", type=float, default=1.0, help="risiko persen modal per trade (default 1)")
+
     args = ap.parse_args()
     conn = get_connection()
     init_db(conn)
-    {"add": cmd_add, "close": cmd_close, "report": cmd_report,
+    {"add": cmd_add, "close": cmd_close, "report": cmd_report, "size": cmd_size,
      None: cmd_report}[args.cmd](conn, args)
 
 

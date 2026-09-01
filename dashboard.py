@@ -18,6 +18,7 @@ from trade.db import get_connection        # noqa: E402
 from trade.fundamentals import red_flags, sanitize   # noqa: E402
 from trade.journal import add_trade, close_trade, pl as jpl, summary as jsummary   # noqa: E402
 from trade.macro import snapshot as macro_snapshot   # noqa: E402
+from trade.risk import position_size, trailing_stop_level   # noqa: E402
 
 st.set_page_config(page_title="Trade IDX", layout="wide")
 
@@ -305,6 +306,22 @@ with t_jurnal:
                 else:
                     st.warning("Minimal isi: Saham, Harga entry, Lot.")
 
+    with st.expander("📐  Kalkulator ukuran posisi (risk-based)"):
+        z1, z2, z3, z4 = st.columns(4)
+        z_cap = z1.number_input("Modal (Rp)", min_value=0.0, value=1_500_000.0,
+                                step=100_000.0, format="%.0f")
+        z_risk = z2.number_input("Risiko %/trade", min_value=0.1, value=2.0, step=0.5)
+        z_entry = z3.number_input("Entry", min_value=0.0, step=5.0, format="%.0f", key="sz_e")
+        z_stop = z4.number_input("Stop", min_value=0.0, step=5.0, format="%.0f", key="sz_s")
+        if z_entry > 0 and z_stop > 0:
+            rs = position_size(z_cap, z_entry, z_stop, risk_pct=z_risk / 100.0)
+            if rs["lot"] > 0:
+                st.success(f"Beli **{rs['lot']} lot** ({rs['shares']:.0f} lembar) = "
+                           f"{rp(rs['modal'])} · kalau kena stop rugi {rp(rs['risk_rp'])} "
+                           f"({rs['risk_pct_real']*100:.1f}% modal)")
+            else:
+                st.warning(rs["note"] or "modal kurang")
+
     if jj.empty:
         st.info("Jurnal masih kosong — catat trade pertama lewat form di atas. 👆")
     else:
@@ -320,27 +337,35 @@ with t_jurnal:
         m2.metric("Open P/L", rp(s["unreal"]))
         m3.metric("Total", rp(s["total"]), f"{s['closed']} closed · win {s['win_rate']*100:.0f}%")
 
-        def _row(r, cur):
-            p = jpl(r, cur)
-            ret = p["net_pct"] * 100 if p["net_pct"] is not None else None
-            return {"saham": code(r["ticker"]), "lot": r["lot"], "entry": r["entry"],
-                    "sekarang/keluar": p["px"], "return %": ret, "P/L": p["pl_rp"],
-                    "stop": r["stop"], "sistem": sigmap.get(r["ticker"], "-"),
-                    "alarm": "⚠️ < stop" if (r["stop"] and cur and cur < r["stop"]) else ""}
-
         cfg = {
             "entry": st.column_config.NumberColumn("entry", format="Rp %.0f"),
-            "sekarang/keluar": st.column_config.NumberColumn("skrg/keluar", format="Rp %.0f"),
+            "sekarang": st.column_config.NumberColumn("sekarang", format="Rp %.0f"),
+            "keluar": st.column_config.NumberColumn("keluar", format="Rp %.0f"),
             "return %": st.column_config.NumberColumn("return %", format="%.2f"),
             "P/L": st.column_config.NumberColumn("P/L", format="Rp %.0f"),
-            "stop": st.column_config.NumberColumn("stop", format="Rp %.0f"),
+            "stop": st.column_config.NumberColumn("stop awal", format="Rp %.0f"),
+            "trail": st.column_config.NumberColumn("trail stop", format="Rp %.0f"),
         }
         opn = [r for r in recs if r["status"] == "open"]
         cld = [r for r in recs if r["status"] == "closed"]
         if opn:
-            st.markdown(":material/push_pin: **Posisi terbuka** (vs sinyal sistem)")
-            st.dataframe(pd.DataFrame([_row(r, pxmap.get(r["ticker"])) for r in opn]),
-                         hide_index=True, use_container_width=True, column_config=cfg)
+            st.markdown(":material/push_pin: **Posisi terbuka** — `trail` = stop trailing "
+                        "sekarang (jual kalau harga < trail); vs sinyal sistem")
+            orows = []
+            for r in opn:
+                cur = pxmap.get(r["ticker"])
+                p = jpl(r, cur)
+                tr = trailing_stop_level(get_connection(), r["ticker"],
+                                         r["entry_date"], r["stop"])["trail"]
+                orows.append({
+                    "saham": code(r["ticker"]), "lot": r["lot"], "entry": r["entry"],
+                    "sekarang": cur,
+                    "return %": (p["net_pct"] * 100 if p["net_pct"] is not None else None),
+                    "P/L": p["pl_rp"], "trail": tr,
+                    "sistem": sigmap.get(r["ticker"], "-"),
+                    "alarm": "⚠️ JUAL" if (tr and cur and cur < tr) else ""})
+            st.dataframe(pd.DataFrame(orows), hide_index=True,
+                         use_container_width=True, column_config=cfg)
             with st.expander("✔  Tutup posisi"):
                 opts = {f"#{r['id']} · {code(r['ticker'])} @ {rp(r['entry'])}": r["id"]
                         for r in opn}
@@ -357,5 +382,13 @@ with t_jurnal:
                         st.warning("Isi harga keluar dulu.")
         if cld:
             st.markdown(":material/check_circle: **Sudah ditutup**")
-            st.dataframe(pd.DataFrame([_row(r, None) for r in cld]).drop(columns=["sistem", "alarm"]),
-                         hide_index=True, use_container_width=True, column_config=cfg)
+            crows = []
+            for r in cld:
+                p = jpl(r, None)
+                crows.append({
+                    "saham": code(r["ticker"]), "lot": r["lot"], "entry": r["entry"],
+                    "keluar": p["px"],
+                    "return %": (p["net_pct"] * 100 if p["net_pct"] is not None else None),
+                    "P/L": p["pl_rp"]})
+            st.dataframe(pd.DataFrame(crows), hide_index=True,
+                         use_container_width=True, column_config=cfg)
