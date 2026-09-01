@@ -5,6 +5,11 @@ Data via yfinance (indeks/kurs/komoditas/global) -> tabel `macro`. Regime IHSG
 long agresif atau mesti hati-hati. Buat sistem LONG-ONLY, ini penting — jangan
 lawan arus pasar (gap #5: filter regime yang tadinya nggak ada).
 
+CATATAN BACKTEST (5thn, regime saat entry): dipakai sbg OVERLAY / dial UKURAN,
+BUKAN gate keras. Entry pas risk-off masih rata2 +2,86% (vs +3,56% risk-on) —
+skip total malah MOTONG profit (total ret 14.293% -> 10.232%). Jadi risk-off =
+selektif + ukuran kecil, bukan stop.
+
 `baik`: arah yang BAGUS buat saham IDX. +1 = naik itu bagus; -1 = naik itu jelek
 (mis. USD/IDR naik = rupiah lemah = arus asing keluar = jelek).
 """
