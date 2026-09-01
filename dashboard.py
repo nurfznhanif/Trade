@@ -17,6 +17,7 @@ from trade.config import DATA_DIR          # noqa: E402
 from trade.db import get_connection        # noqa: E402
 from trade.fundamentals import red_flags, sanitize   # noqa: E402
 from trade.journal import add_trade, close_trade, pl as jpl, summary as jsummary   # noqa: E402
+from trade.macro import snapshot as macro_snapshot   # noqa: E402
 
 st.set_page_config(page_title="Trade IDX", layout="wide")
 
@@ -134,6 +135,31 @@ st.markdown(
     f'<div class="tile"><div class="n">{nfocus}</div>'
     f'<div class="l">Saham dipantau</div></div>'
     f'</div>', unsafe_allow_html=True)
+
+try:
+    _ms = macro_snapshot(get_connection())
+    _reg = _ms["regime"]
+    if _reg.get("level"):
+        _clr = {"risk-on": "#16a34a", "netral": "#f59e0b",
+                "risk-off": "#dc2626"}.get(_reg["regime"], "#6b7280")
+        _inds = []
+        for _i in _ms["indikator"]:
+            if _i["ticker"] == "^JKSE" or _i.get("chg1mo") is None:
+                continue
+            _c = "#16a34a" if _i.get("arah") == "bagus" else "#dc2626"
+            _inds.append(f'<span style="margin-right:1.1rem;white-space:nowrap;">{_i["label"]} '
+                         f'<b style="color:{_c}">{_i["chg1mo"]*100:+.1f}%</b></span>')
+        _ma200 = f"{_reg['ma200']:.0f}" if _reg["ma200"] else "—"
+        st.markdown(
+            f'<div class="macro" style="border-left:4px solid {_clr};">'
+            f'<div class="ml">{IC_LOGO} Regime Makro (DATA) · '
+            f'<b style="color:{_clr}">{_reg["regime"].upper()}</b></div>'
+            f'<div style="font-size:.86rem;margin-bottom:.45rem;color:#374151;">'
+            f'{_reg["note"]} — IHSG {_reg["level"]:.0f} (MA200 {_ma200})</div>'
+            f'<div style="font-size:.8rem;">{"".join(_inds)}</div></div>',
+            unsafe_allow_html=True)
+except Exception:
+    pass
 
 if ana.get("macro"):
     st.markdown(

@@ -28,6 +28,7 @@ import pandas as pd  # noqa: E402
 from trade.config import DATA_DIR  # noqa: E402
 from trade.db import get_connection  # noqa: E402
 from trade.fundamentals import red_flags, sanitize  # noqa: E402
+from trade.macro import snapshot as macro_snapshot  # noqa: E402
 
 PUMP_1MO = 0.60      # naik >60% sebulan = wajib curiga pump
 PUMP_PER = 200.0     # PER absurd = cangkang / tanpa laba
@@ -116,8 +117,24 @@ def main():
     w(f"_generated {datetime.now():%Y-%m-%d %H:%M} · {n_focus} saham dipantau · "
       f"{len(sig)} sinyal · fokus IDX_")
     w("")
-    w("> Isi `macro` di analysis.json manual (IHSG, USD/IDR, tema sektor) — itu dari "
-      "berita/luar DB. Brief ini nyediain bahan PER-SAHAM buat entry/target/stop.")
+    # --- overlay MAKRO (data, bukan cuma narasi berita) ---
+    ms = macro_snapshot(conn)
+    r = ms["regime"]
+    w(f"## 🌐 MAKRO — REGIME IHSG: {r['regime'].upper()}")
+    w(f"    {r['note']}")
+    if r["level"]:
+        ma200 = f"{r['ma200']:.0f}" if r["ma200"] else "—"
+        w(f"    IHSG {r['level']:.0f} · MA50 {r['ma50']:.0f} · MA200 {ma200}")
+    parts = []
+    for i in ms["indikator"]:
+        if i["ticker"] == "^JKSE" or i.get("chg1mo") is None:
+            continue
+        parts.append(f"{i['label']} {i['chg1mo']*100:+.1f}% ({i.get('arah', '-')})")
+    if parts:
+        w("    " + " · ".join(parts))
+    w("")
+    w("> Isi `macro` di analysis.json: pakai REGIME di atas + tema sektor dari berita. "
+      "Risk-off = rem long baru / ukuran kecil. Brief ini bahan PER-SAHAM buat entry/target/stop.")
     w("")
     w("## Kandidat teratas (urut skor mesin)")
     w("")

@@ -118,6 +118,7 @@ trade/            package inti (market-agnostic)
   news.py         tarik berita (Google News RSS)
   sentiment.py    skor sentimen berita
   fundamentals.py rasio + bendera merah (pagar anti-sampah)
+  macro.py        regime IHSG (vs MA200) + indikator makro (kurs/komoditas/global)
   indicators.py   MA / RSI / ATR
   signals.py      signal engine (teknikal + sentimen)
   backtest.py     backtest point-in-time (trailing + biaya)

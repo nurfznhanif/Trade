@@ -21,7 +21,8 @@ except Exception:
 STEPS = [
     ("Refresh harga (1 bulan terakhir)", "backfill_prices.py",
      ["--focus", "--refresh", "--period", "1mo"]),
-    ("Tarik berita + disclosure IDX", "fetch_news_focus.py", []),
+    ("Tarik data makro (regime IHSG + kurs/komoditas)", "fetch_macro.py", []),
+    ("Tarik berita (Google News RSS)", "fetch_news_focus.py", []),
     ("Skor sentimen", "score_news.py", []),
     ("Generate sinyal (pagar fundamental)", "generate_signals.py", ["--top", "10"]),
     ("Paper trading update", "paper_run.py", []),

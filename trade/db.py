@@ -108,6 +108,13 @@ CREATE TABLE IF NOT EXISTS journal (
     created     TEXT
 );
 
+CREATE TABLE IF NOT EXISTS macro (
+    ticker  TEXT NOT NULL,        -- ^JKSE, IDR=X, GC=F, DX-Y.NYB, ^TNX, ^VIX, CL=F
+    date    TEXT NOT NULL,
+    close   REAL,
+    PRIMARY KEY (ticker, date)
+);
+
 CREATE INDEX IF NOT EXISTS idx_prices_ticker_date ON prices (ticker, date);
 CREATE INDEX IF NOT EXISTS idx_news_ticker_pub    ON news   (ticker, published);
 """
@@ -335,3 +342,14 @@ def prune_to_markets(conn, markets) -> int:
     cur = conn.execute(f"DELETE FROM instruments WHERE market NOT IN ({ph})", markets)
     conn.commit()
     return cur.rowcount
+
+
+def upsert_macro(conn, ticker: str, rows) -> int:
+    """Simpan seri makro. rows: iterable (date, close). Return jumlah baris."""
+    data = [(ticker, d, c) for d, c in rows]
+    if not data:
+        return 0
+    conn.executemany(
+        "INSERT OR REPLACE INTO macro (ticker, date, close) VALUES (?, ?, ?)", data)
+    conn.commit()
+    return len(data)
