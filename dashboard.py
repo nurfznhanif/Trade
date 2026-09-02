@@ -500,8 +500,9 @@ with t_jurnal:
         opn = [r for r in recs if r["status"] == "open"]
         cld = [r for r in recs if r["status"] == "closed"]
         if opn:
-            st.markdown(":material/push_pin: **Posisi kamu** — bar HIJAU = untung, MERAH = rugi. "
-                        "Titik makin ke KIRI (dekat garis merah) = makin deket harus **jual**.")
+            st.markdown(":material/push_pin: **Posisi kamu** — bar HIJAU = untung, MERAH = rugi "
+                        "(dari HARGA; fee kepotong pas jual beneran). Titik makin ke KIRI "
+                        "(dekat garis merah) = makin deket harus **jual**.")
             posmap = {p["ticker"]: p for p in ana.get("positions", [])}
             _cards = ['<div style="display:flex;flex-direction:column;gap:.6rem;">']
             for r in opn:
@@ -510,7 +511,7 @@ with t_jurnal:
                 tr = trailing_stop_level(get_connection(), r["ticker"],
                                          r["entry_date"], r["stop"])["trail"]
                 _cards.append(_poscard(code(r["ticker"]), r["lot"], r["entry"], cur, tr,
-                                       p["net_pct"], p["pl_rp"], sigmap.get(r["ticker"], "-"),
+                                       p["gross_pct"], p["pl_rp"], sigmap.get(r["ticker"], "-"),
                                        verdict=posmap.get(r["ticker"])))
             _cards.append("</div>")
             st.markdown("".join(_cards), unsafe_allow_html=True)
@@ -536,7 +537,7 @@ with t_jurnal:
                 crows.append({
                     "saham": code(r["ticker"]), "lot": r["lot"], "entry": r["entry"],
                     "keluar": p["px"],
-                    "return %": (p["net_pct"] * 100 if p["net_pct"] is not None else None),
+                    "return %": (p["gross_pct"] * 100 if p["gross_pct"] is not None else None),
                     "P/L": p["pl_rp"]})
             st.dataframe(pd.DataFrame(crows), hide_index=True,
                          use_container_width=True, column_config=cfg)
