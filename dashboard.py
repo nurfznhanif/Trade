@@ -19,7 +19,7 @@ from trade.db import get_connection        # noqa: E402
 from trade.fundamentals import red_flags, sanitize   # noqa: E402
 from trade.journal import add_trade, close_trade, pl as jpl, summary as jsummary   # noqa: E402
 from trade.macro import snapshot as macro_snapshot   # noqa: E402
-from trade.risk import position_size, trailing_stop_level   # noqa: E402
+from trade.risk import trailing_stop_level   # noqa: E402
 
 st.set_page_config(page_title="Trade IDX", layout="wide")
 
@@ -359,7 +359,7 @@ with t_jurnal:
 
     jj = q("SELECT * FROM journal")
 
-    with st.expander("➕  Catat posisi baru", expanded=jj.empty):
+    with st.expander("➕  Catat posisi (saham yang UDAH kamu beli di broker)", expanded=jj.empty):
         with st.form("j_add", clear_on_submit=True):
             a1, a2, a3 = st.columns(3)
             f_tk = a1.text_input("Saham", placeholder="mis. CMRY")
@@ -379,21 +379,9 @@ with t_jurnal:
                 else:
                     st.warning("Minimal isi: Saham, Harga entry, Lot.")
 
-    with st.expander("📐  Kalkulator ukuran posisi (risk-based)"):
-        z1, z2, z3, z4 = st.columns(4)
-        z_cap = z1.number_input("Modal (Rp)", min_value=0.0, value=1_500_000.0,
-                                step=100_000.0, format="%.0f")
-        z_risk = z2.number_input("Risiko %/trade", min_value=0.1, value=2.0, step=0.5)
-        z_entry = z3.number_input("Entry", min_value=0.0, step=5.0, format="%.0f", key="sz_e")
-        z_stop = z4.number_input("Stop", min_value=0.0, step=5.0, format="%.0f", key="sz_s")
-        if z_entry > 0 and z_stop > 0:
-            rs = position_size(z_cap, z_entry, z_stop, risk_pct=z_risk / 100.0)
-            if rs["lot"] > 0:
-                st.success(f"Beli **{rs['lot']} lot** ({rs['shares']:.0f} lembar) = "
-                           f"{rp(rs['modal'])} · kalau kena stop rugi {rp(rs['risk_rp'])} "
-                           f"({rs['risk_pct_real']*100:.1f}% modal)")
-            else:
-                st.warning(rs["note"] or "modal kurang")
+    st.caption("💡 Bingung berapa lot? Nggak usah ngitung manual — ketik "
+               "`/analisa modal 1500000` di Claude Code, tiap rekomendasi BELI langsung "
+               "dikasih jumlah lot-nya.")
 
     if jj.empty:
         st.info("Jurnal masih kosong — catat trade pertama lewat form di atas. 👆")
