@@ -8,6 +8,7 @@ import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -280,44 +281,70 @@ t_mesin, t_sent, t_fund, t_chart, t_paper, t_jurnal = st.tabs([
     ":material/book: Jurnal"])
 
 with t_mesin:
-    st.caption("Sinyal rule-based (MA/RSI/ATR) — buat PEMBANDING. Yang di atas keputusan Claude.")
+    st.caption("Seberapa KUAT sinyal beli tiap saham (menurut rumus teknikal). Pembanding buat keputusan Claude.")
     if not sig.empty:
-        acts = st.multiselect("Filter", ["BUY", "HOLD", "SELL"], default=["BUY"])
-        d = sig[sig["action"].isin(acts)].copy().sort_values("score", ascending=False)
-        d["saham"] = d["ticker"].map(code)
-        st.dataframe(
-            d[["saham", "action", "score", "close", "rsi", "sent", "n_news", "stop", "target"]],
-            hide_index=True, use_container_width=True, height=420,
-            column_config={
-                "action": "aksi",
-                "score": st.column_config.ProgressColumn("skor", min_value=0, max_value=3, format="%.2f"),
-                "close": st.column_config.NumberColumn("harga", format="Rp %.0f"),
-                "rsi": st.column_config.NumberColumn("RSI", format="%.0f"),
-                "sent": st.column_config.NumberColumn("sentimen", format="%+.2f"),
-                "n_news": "berita",
-                "stop": st.column_config.NumberColumn("stop", format="Rp %.0f"),
-                "target": st.column_config.NumberColumn("target", format="Rp %.0f"),
-            })
+        _b = sig[sig["action"] == "BUY"].nlargest(15, "score").copy()
+        _b["saham"] = _b["ticker"].map(code)
+        _mc = alt.Chart(_b).mark_bar().encode(
+            x=alt.X("score:Q", title="skor sinyal (makin panjang makin kuat)"),
+            y=alt.Y("saham:N", sort="-x", title=None),
+            color=alt.condition(alt.datum.rsi > 70, alt.value("#f59e0b"), alt.value("#16a34a")),
+            tooltip=[alt.Tooltip("saham"), alt.Tooltip("score:Q", title="skor", format=".2f"),
+                     alt.Tooltip("rsi:Q", title="RSI", format=".0f"),
+                     alt.Tooltip("sent:Q", title="sentimen", format="+.2f"),
+                     alt.Tooltip("close:Q", title="harga", format=",.0f")],
+        ).properties(height=380)
+        st.altair_chart(_mc, use_container_width=True)
+        st.caption("🟢 hijau = sinyal sehat  ·  🟠 oranye = RSI di atas 70 (udah kemahalan, hati-hati kejar).")
+        with st.expander("📋 Lihat tabel lengkap (semua angka)"):
+            acts = st.multiselect("Filter", ["BUY", "HOLD", "SELL"], default=["BUY"])
+            d = sig[sig["action"].isin(acts)].copy().sort_values("score", ascending=False)
+            d["saham"] = d["ticker"].map(code)
+            st.dataframe(
+                d[["saham", "action", "score", "close", "rsi", "sent", "n_news", "stop", "target"]],
+                hide_index=True, use_container_width=True, height=420,
+                column_config={
+                    "action": "aksi",
+                    "score": st.column_config.ProgressColumn("skor", min_value=0, max_value=3, format="%.2f"),
+                    "close": st.column_config.NumberColumn("harga", format="Rp %.0f"),
+                    "rsi": st.column_config.NumberColumn("RSI", format="%.0f"),
+                    "sent": st.column_config.NumberColumn("sentimen", format="%+.2f"),
+                    "n_news": "berita",
+                    "stop": st.column_config.NumberColumn("stop", format="Rp %.0f"),
+                    "target": st.column_config.NumberColumn("target", format="Rp %.0f"),
+                })
 
 with t_sent:
+    st.caption("Mood BERITA tiap saham (baca ~14 hari terakhir). Sentimen positif = salah satu faktor Claude.")
     since = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat(timespec="seconds")
     lb = q("SELECT n.ticker AS saham, i.name AS nama, COUNT(*) AS berita, "
            "ROUND(AVG(n.sent_score),2) AS sentimen "
            "FROM news n JOIN instruments i ON i.ticker=n.ticker "
            "WHERE n.sent_score IS NOT NULL AND (n.published IS NULL OR n.published>=?) "
            "GROUP BY n.ticker HAVING berita>=3 ORDER BY sentimen DESC", (since,))
+    if not lb.empty:
+        _sd = pd.concat([lb.head(8), lb.tail(8)]).drop_duplicates("saham").copy()
+        _sd["saham"] = _sd["saham"].map(code)
+        _scc = alt.Chart(_sd).mark_bar().encode(
+            x=alt.X("sentimen:Q", title="mood berita  (−1 jelek … 0 netral … +1 bagus)"),
+            y=alt.Y("saham:N", sort="-x", title=None),
+            color=alt.condition(alt.datum.sentimen > 0, alt.value("#16a34a"), alt.value("#dc2626")),
+            tooltip=["saham", "nama", "berita", "sentimen"],
+        ).properties(height=380)
+        st.altair_chart(_scc, use_container_width=True)
+        st.caption("🟢 kanan = berita POSITIF  ·  🔴 kiri = berita NEGATIF.")
     conf = {"sentimen": st.column_config.NumberColumn("sentimen", format="%+.2f")}
-    a, b = st.columns(2)
-    a.markdown(":material/trending_up: **Paling positif**")
-    a.dataframe(lb.head(10), hide_index=True, use_container_width=True, column_config=conf)
-    b.markdown(":material/trending_down: **Paling negatif**")
-    b.dataframe(lb.tail(10).iloc[::-1], hide_index=True, use_container_width=True, column_config=conf)
-    st.divider()
-    if not sig.empty:
-        tk = st.selectbox("Berita per saham", sorted(sig["ticker"].unique()))
-        st.dataframe(q("SELECT published AS terbit, sent_score AS skor, source AS sumber, "
-                       "title AS judul FROM news WHERE ticker=? ORDER BY published DESC LIMIT 25", (tk,)),
-                     hide_index=True, use_container_width=True)
+    with st.expander("📋 Tabel + baca berita per saham"):
+        a, b = st.columns(2)
+        a.markdown("**Paling positif**")
+        a.dataframe(lb.head(10), hide_index=True, use_container_width=True, column_config=conf)
+        b.markdown("**Paling negatif**")
+        b.dataframe(lb.tail(10).iloc[::-1], hide_index=True, use_container_width=True, column_config=conf)
+        if not sig.empty:
+            tk = st.selectbox("Berita per saham", sorted(sig["ticker"].unique()))
+            st.dataframe(q("SELECT published AS terbit, sent_score AS skor, source AS sumber, "
+                           "title AS judul FROM news WHERE ticker=? ORDER BY published DESC LIMIT 25", (tk,)),
+                         hide_index=True, use_container_width=True)
 
 with t_fund:
     f = q("SELECT * FROM fundamentals")
@@ -330,18 +357,29 @@ with t_fund:
         fs["saham"] = fs["ticker"].map(code)
         for pc in ["roe", "div_yield", "margin"]:               # fraksi -> persen buat tampil
             fs[pc] = pd.to_numeric(fs[pc], errors="coerce") * 100
-        st.caption("Rasio yfinance yang ngaco (mis. PBV ratusan ribu) disaring jadi kosong.")
-        st.dataframe(
-            fs[["saham", "per", "pbv", "roe", "der", "div_yield", "margin", "bendera merah"]],
-            hide_index=True, use_container_width=True, height=440,
-            column_config={
-                "per": st.column_config.NumberColumn("PER", format="%.1f"),
-                "pbv": st.column_config.NumberColumn("PBV", format="%.2f"),
-                "roe": st.column_config.NumberColumn("ROE %", format="%.1f"),
-                "der": st.column_config.NumberColumn("DER %", format="%.0f"),
-                "div_yield": st.column_config.NumberColumn("Div yield %", format="%.2f"),
-                "margin": st.column_config.NumberColumn("Margin %", format="%.1f"),
-            })
+        _fd = fs.dropna(subset=["per", "roe"])
+        _fd = _fd[(_fd["per"] > 0) & (_fd["per"] < 50) & (_fd["roe"] > -20) & (_fd["roe"] < 80)]
+        _fc = alt.Chart(_fd).mark_circle(size=70, opacity=0.55, color="#16a34a").encode(
+            x=alt.X("per:Q", title="PER  →  makin KIRI makin MURAH"),
+            y=alt.Y("roe:Q", title="ROE %  →  makin ATAS makin UNTUNG"),
+            tooltip=[alt.Tooltip("saham"), alt.Tooltip("per:Q", title="PER", format=".1f"),
+                     alt.Tooltip("roe:Q", title="ROE %", format=".1f"),
+                     alt.Tooltip("margin:Q", title="margin %", format=".1f")],
+        ).properties(height=400)
+        st.altair_chart(_fc, use_container_width=True)
+        st.caption("🎯 Pojok KIRI-ATAS = murah + untung (paling bagus). Kanan-bawah = mahal + kurang untung.")
+        with st.expander("📋 Lihat tabel rasio lengkap (semua saham)"):
+            st.dataframe(
+                fs[["saham", "per", "pbv", "roe", "der", "div_yield", "margin", "bendera merah"]],
+                hide_index=True, use_container_width=True, height=440,
+                column_config={
+                    "per": st.column_config.NumberColumn("PER", format="%.1f"),
+                    "pbv": st.column_config.NumberColumn("PBV", format="%.2f"),
+                    "roe": st.column_config.NumberColumn("ROE %", format="%.1f"),
+                    "der": st.column_config.NumberColumn("DER %", format="%.0f"),
+                    "div_yield": st.column_config.NumberColumn("Div yield %", format="%.2f"),
+                    "margin": st.column_config.NumberColumn("Margin %", format="%.1f"),
+                })
 
 with t_chart:
     if not sig.empty:
@@ -354,10 +392,23 @@ with t_chart:
             st.line_chart(px.tail(180), color=["#1a1f2e", "#16a34a", "#f59e0b"])
 
 with t_paper:
+    st.caption("Simulasi portfolio sistem (duit bohongan) — buat lihat strategi ini cuan apa nggak.")
     csv = DATA_DIR / "paper_open_positions.csv"
     if csv.exists():
-        st.markdown(":material/push_pin: **Posisi paper terbuka**")
-        st.dataframe(pd.read_csv(csv), hide_index=True, use_container_width=True)
+        _pp = pd.read_csv(csv)
+        _pp["saham"] = _pp["ticker"].map(code)
+        _pp["untung_rugi"] = pd.to_numeric(_pp["current_ret"], errors="coerce") * 100
+        _ppc = alt.Chart(_pp).mark_bar().encode(
+            x=alt.X("untung_rugi:Q", title="untung / rugi tiap posisi (%)"),
+            y=alt.Y("saham:N", sort="-x", title=None),
+            color=alt.condition(alt.datum.untung_rugi > 0, alt.value("#16a34a"), alt.value("#dc2626")),
+            tooltip=[alt.Tooltip("saham"), alt.Tooltip("untung_rugi:Q", title="untung %", format="+.1f"),
+                     alt.Tooltip("entry:Q", title="masuk", format=",.0f")],
+        ).properties(height=380)
+        st.markdown(":material/push_pin: **Posisi paper (simulasi)** — 🟢 untung, 🔴 rugi")
+        st.altair_chart(_ppc, use_container_width=True)
+        with st.expander("📋 Lihat tabel"):
+            st.dataframe(pd.read_csv(csv), hide_index=True, use_container_width=True)
     else:
         st.info("Belum ada posisi paper.")
 
