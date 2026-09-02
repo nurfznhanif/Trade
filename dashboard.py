@@ -105,7 +105,7 @@ def code(t):
     return t.replace(".JK", "")
 
 
-def _poscard(saham, lot, entry, cur, trail, ret, pl_rp, sistem):
+def _poscard(saham, lot, entry, cur, trail, ret, pl_rp, sistem, verdict=None):
     """Kartu visual 1 posisi: bar warna + titik harga vs garis jual (buat pemula)."""
     entry = float(entry)
     cur = float(cur) if cur else entry
@@ -127,6 +127,14 @@ def _poscard(saham, lot, entry, cur, trail, ret, pl_rp, sistem):
         stat, sc = f"Aman — harga masih {rp(cushion)} di atas garis jual", "#16a34a"
     rc = "#16a34a" if (ret is not None and ret >= 0) else "#dc2626"
     rets = f"{ret*100:+.2f}%" if ret is not None else "—"
+    vhtml = ""
+    if verdict and verdict.get("verdict"):
+        vc = {"JUAL": "#dc2626", "WASPADA": "#f59e0b",
+              "TAHAN": "#16a34a"}.get(verdict["verdict"], "#6b7280")
+        vhtml = (f'<div style="margin-top:.45rem;font-size:.8rem;color:#374151;'
+                 f'border-top:1px dashed #ecedf0;padding-top:.45rem;">'
+                 f'🤖 <b style="color:{vc};">Claude: {verdict["verdict"]}</b> — '
+                 f'{verdict.get("reason", "")}</div>')
     return (
         f'<div style="background:#fff;border:1px solid #ecedf0;border-radius:14px;padding:.85rem 1.1rem;">'
         f'<div style="display:flex;justify-content:space-between;align-items:baseline;">'
@@ -144,7 +152,7 @@ def _poscard(saham, lot, entry, cur, trail, ret, pl_rp, sistem):
         f'<span style="color:#dc2626;font-weight:600;">↓ jual di {rp(trail)}</span>'
         f'<span>beli {rp(entry)}</span><span style="color:#1a1f2e;font-weight:600;">skrg {rp(cur)}</span></div>'
         f'<div style="font-size:.82rem;font-weight:600;color:{sc};margin-top:.5rem;">'
-        f'{stat}  ·  P/L {rp(pl_rp)}</div></div>')
+        f'{stat}  ·  P/L {rp(pl_rp)}</div>{vhtml}</div>')
 
 
 ana = {}
@@ -440,6 +448,7 @@ with t_jurnal:
         if opn:
             st.markdown(":material/push_pin: **Posisi kamu** — bar HIJAU = untung, MERAH = rugi. "
                         "Titik makin ke KIRI (dekat garis merah) = makin deket harus **jual**.")
+            posmap = {p["ticker"]: p for p in ana.get("positions", [])}
             _cards = ['<div style="display:flex;flex-direction:column;gap:.6rem;">']
             for r in opn:
                 cur = pxmap.get(r["ticker"])
@@ -447,7 +456,8 @@ with t_jurnal:
                 tr = trailing_stop_level(get_connection(), r["ticker"],
                                          r["entry_date"], r["stop"])["trail"]
                 _cards.append(_poscard(code(r["ticker"]), r["lot"], r["entry"], cur, tr,
-                                       p["net_pct"], p["pl_rp"], sigmap.get(r["ticker"], "-")))
+                                       p["net_pct"], p["pl_rp"], sigmap.get(r["ticker"], "-"),
+                                       verdict=posmap.get(r["ticker"])))
             _cards.append("</div>")
             st.markdown("".join(_cards), unsafe_allow_html=True)
             with st.expander("✔  Tutup posisi"):

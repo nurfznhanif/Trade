@@ -73,6 +73,19 @@ IHSG belum ada di DB, jadi tone makro dibaca dari berita.
 - Data fundamental yfinance yang ekstrem/ngaco (PBV/DER/divyield absurd) → ABAIKAN, sebut kalau relevan.
 - `reason` **wajib** cerminin isi ARTIKEL, bukan cuma judul.
 
+**4b. REVIEW POSISI KAMU — saran TAHAN / WASPADA / JUAL (kalau tabel `journal` ada isinya).**
+Baca posisi terbuka:
+`.venv/Scripts/python.exe -c "import sqlite3;c=sqlite3.connect('data/trade.db');c.row_factory=sqlite3.Row;[print(dict(r)) for r in c.execute(\"SELECT id,ticker,entry_date,entry,stop FROM journal WHERE status='open'\")]"`
+Buat TIAP posisi terbuka, kasih verdict:
+- **Trailing stop** (`from trade.risk import trailing_stop_level` + harga terakhir dari `prices`):
+  harga < trail → **JUAL**; mepet (dalam ~3% di atas trail) → **WASPADA**.
+- **Berita** saham itu → kalau tesis RUSAK (berita jelek / jadi HINDARI / insider dumping) →
+  **JUAL/WASPADA** walau trail belum kena.
+- Selain itu → **TAHAN**.
+Tambah field top-level `"positions"` di analysis.json:
+`"positions": [{"ticker":"XXXX.JK","verdict":"TAHAN|WASPADA|JUAL","reason":"1 kalimat kenapa"}]`
+Journal kosong → skip (nggak usah field positions).
+
 **5. Validasi & lapor.**
 - Validasi JSON: `.venv/Scripts/python.exe -c "import json;print(len(json.load(open('data/analysis.json',encoding='utf-8'))['calls']),'calls OK')"`
 - Lapor ke user: ringkasan call (jumlah BELI/TUNGGU/HINDARI) + **clickbait/caveat apa yang ketemu
