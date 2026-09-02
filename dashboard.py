@@ -44,14 +44,14 @@ html, body, [class*="css"], .stApp {font-family:'Inter',system-ui,sans-serif;}
 .hdr .date {color:#6b7280; font-size:.82rem; font-weight:600;}
 .sub {color:#8b93a1; font-size:.84rem; margin:.15rem 0 1.6rem;}
 
-.tiles {display:grid; grid-template-columns:repeat(4,1fr); gap:.8rem; margin-bottom:1.7rem;}
+.tiles {display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:.8rem; margin-bottom:1.7rem;}
 .tile {background:#fff; border:1px solid #ecedf0; border-radius:16px; padding:1rem 1.2rem;}
 .tile .n {font-size:2rem; font-weight:800; line-height:1; color:#1a1f2e;}
 .tile .l {color:#8b93a1; font-size:.74rem; font-weight:600; text-transform:uppercase;
           letter-spacing:.05em; margin-top:.45rem; display:flex; align-items:center;}
-.tile.buy .n {color:#16a34a;} .tile.warn .n {color:#f59e0b;} .tile.sell .n {color:#dc2626;}
+.tile.buy .n {color:#16a34a;} .tile.care .n {color:#f59e0b;} .tile.wait .n {color:#6b7280;} .tile.sell .n {color:#dc2626;}
 .dot {display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px;}
-.dot.buy {background:#16a34a;} .dot.warn {background:#f59e0b;} .dot.sell {background:#dc2626;}
+.dot.buy {background:#16a34a;} .dot.care {background:#f59e0b;} .dot.wait {background:#6b7280;} .dot.sell {background:#dc2626;}
 
 .macro {background:#fff; border:1px solid #ecedf0; border-radius:16px; padding:.95rem 1.2rem;
         margin-bottom:1.7rem; font-size:.88rem; color:#374151; line-height:1.5;}
@@ -195,19 +195,22 @@ with st.expander("⚙️  Aksi cepat — refresh data / buat brief"):
     st.info("**Update keputusan Claude:** ketik `/analisa` di Claude Code — dia baca brief + artikel "
             "lalu nulis keputusan. Ini butuh Claude (LLM), jadi **nggak bisa dari tombol**. Gratis, pakai langgananmu.")
 
-nbeli = sum(1 for c in calls if c["action"].startswith("BELI"))
+nbeli = sum(1 for c in calls if c["action"].startswith("BELI") and c.get("flag") == "good")
+ncare = sum(1 for c in calls if c["action"].startswith("BELI") and c.get("flag") != "good")
 ntunggu = sum(1 for c in calls if "TUNGGU" in c["action"])
 nhindari = sum(1 for c in calls if c["action"] == "HINDARI")
 st.markdown(
     f'<div class="tiles">'
     f'<div class="tile buy"><div class="n">{nbeli}</div>'
     f'<div class="l"><span class="dot buy"></span>Beli</div></div>'
-    f'<div class="tile warn"><div class="n">{ntunggu}</div>'
-    f'<div class="l"><span class="dot warn"></span>Tunggu</div></div>'
+    f'<div class="tile care"><div class="n">{ncare}</div>'
+    f'<div class="l"><span class="dot care"></span>Beli hati-hati</div></div>'
+    f'<div class="tile wait"><div class="n">{ntunggu}</div>'
+    f'<div class="l"><span class="dot wait"></span>Tunggu</div></div>'
     f'<div class="tile sell"><div class="n">{nhindari}</div>'
     f'<div class="l"><span class="dot sell"></span>Hindari</div></div>'
     f'<div class="tile"><div class="n">{nfocus}</div>'
-    f'<div class="l">Saham dipantau</div></div>'
+    f'<div class="l">Dipantau</div></div>'
     f'</div>', unsafe_allow_html=True)
 
 try:
