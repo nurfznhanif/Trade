@@ -359,25 +359,53 @@ with t_jurnal:
 
     jj = q("SELECT * FROM journal")
 
+    _recs = [c for c in calls
+             if str(c.get("action", "")).startswith("BELI") and c.get("entry")]
     with st.expander("➕  Catat posisi (saham yang UDAH kamu beli di broker)", expanded=jj.empty):
-        with st.form("j_add", clear_on_submit=True):
+        if _recs:
+            st.markdown("**Cara gampang — pilih dari rekomendasi Claude** (stop & target otomatis):")
+            _opts = {f"{code(c['ticker'])} — saran: {int(c.get('lot') or 1)} lot @ {rp(c['entry'])}": c
+                     for c in _recs}
+            _pick = st.selectbox("Saham yang kamu beli", list(_opts), key="j_pick")
+            _rc = _opts[_pick]
+            d1, d2 = st.columns(2)
+            _bp = d1.number_input(
+                "Harga kamu beli beneran (Rp)", min_value=0.0, value=float(_rc["entry"]),
+                step=5.0, format="%.0f", key=f"j_bp_{_rc['ticker']}",
+                help="Harga yang BENERAN kamu bayar di broker. Default = saran Claude; ganti kalau beda.")
+            _bl = d2.number_input("Berapa lot", min_value=1, value=int(_rc.get("lot") or 1),
+                                  step=1, key=f"j_bl_{_rc['ticker']}")
+            st.caption(f"✓ Stop otomatis {rp(_rc.get('stop'))} · target {rp(_rc.get('target'))} "
+                       f"— dari Claude, nggak usah kamu isi.")
+            if st.button(f"Catat {code(_rc['ticker'])}  ·  {_bl:g} lot @ {rp(_bp)}",
+                         type="primary", use_container_width=True):
+                if _bp > 0 and _bl > 0:
+                    add_trade(get_connection(), _rc["ticker"], _bp, _bl,
+                              stop=_rc.get("stop"), target=_rc.get("target"),
+                              thesis=f"ikut /analisa ({_rc['action']})")
+                    st.cache_data.clear()
+                    st.rerun()
+                else:
+                    st.warning("Isi harga beli & lot dulu.")
+            st.divider()
+        with st.form("j_add_manual", clear_on_submit=True):
+            st.caption("Atau isi MANUAL (buat saham di luar rekomendasi):")
             a1, a2, a3 = st.columns(3)
-            f_tk = a1.text_input("Saham", placeholder="mis. CMRY")
-            f_price = a2.number_input("Harga entry", min_value=0.0, step=5.0, format="%.0f")
-            f_lot = a3.number_input("Lot (×100 lembar)", min_value=0.0, step=1.0,
-                                    value=1.0, format="%.0f")
+            f_tk = a1.text_input("Kode saham", placeholder="mis. BBRI")
+            f_price = a2.number_input("Harga beli (Rp)", min_value=0.0, step=5.0, format="%.0f")
+            f_lot = a3.number_input("Berapa lot", min_value=0.0, step=1.0, value=1.0, format="%.0f")
             a4, a5 = st.columns(2)
-            f_stop = a4.number_input("Stop (opsional)", min_value=0.0, step=5.0, format="%.0f")
-            f_tgt = a5.number_input("Target (opsional)", min_value=0.0, step=5.0, format="%.0f")
-            f_note = st.text_input("Catatan (opsional)", placeholder="mis. ikut /analisa CMRY")
-            if st.form_submit_button("Catat posisi", use_container_width=True, type="primary"):
+            f_stop = a4.number_input("Batas rugi / stop (boleh kosong)", min_value=0.0, step=5.0, format="%.0f")
+            f_tgt = a5.number_input("Target (boleh kosong)", min_value=0.0, step=5.0, format="%.0f")
+            f_note = st.text_input("Catatan (boleh kosong)", placeholder="mis. ikut /analisa")
+            if st.form_submit_button("Catat manual", use_container_width=True):
                 if f_tk.strip() and f_price > 0 and f_lot > 0:
                     add_trade(get_connection(), f_tk, f_price, f_lot,
                               stop=f_stop or None, target=f_tgt or None, thesis=f_note or None)
                     st.cache_data.clear()
                     st.rerun()
                 else:
-                    st.warning("Minimal isi: Saham, Harga entry, Lot.")
+                    st.warning("Minimal isi: Kode saham, Harga beli, Lot.")
 
     st.caption("💡 Bingung berapa lot? Nggak usah ngitung manual — ketik "
                "`/analisa modal 1500000` di Claude Code, tiap rekomendasi BELI langsung "
