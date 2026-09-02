@@ -105,6 +105,48 @@ def code(t):
     return t.replace(".JK", "")
 
 
+def _poscard(saham, lot, entry, cur, trail, ret, pl_rp, sistem):
+    """Kartu visual 1 posisi: bar warna + titik harga vs garis jual (buat pemula)."""
+    entry = float(entry)
+    cur = float(cur) if cur else entry
+    trail = float(trail) if trail else entry * 0.95
+    lo = trail
+    hi = cur + max(cur - trail, cur * 0.02) * 0.25
+    span = (hi - lo) or 1.0
+    cl = lambda x: max(2.0, min(98.0, x))
+    ent_pct = cl((entry - lo) / span * 100)
+    cur_pct = cl((cur - lo) / span * 100)
+    fill = "#16a34a" if cur >= entry else "#dc2626"
+    flo, fhi = min(ent_pct, cur_pct), max(ent_pct, cur_pct)
+    cushion = cur - trail
+    if cur < trail:
+        stat, sc = "JUAL — harga udah di bawah garis jual", "#dc2626"
+    elif cushion / cur < 0.03:
+        stat, sc = f"Waspada — harga tinggal {rp(cushion)} di atas garis jual", "#f59e0b"
+    else:
+        stat, sc = f"Aman — harga masih {rp(cushion)} di atas garis jual", "#16a34a"
+    rc = "#16a34a" if (ret is not None and ret >= 0) else "#dc2626"
+    rets = f"{ret*100:+.2f}%" if ret is not None else "—"
+    return (
+        f'<div style="background:#fff;border:1px solid #ecedf0;border-radius:14px;padding:.85rem 1.1rem;">'
+        f'<div style="display:flex;justify-content:space-between;align-items:baseline;">'
+        f'<span style="font-weight:800;font-size:1.05rem;color:#1a1f2e;">{saham} '
+        f'<span style="font-size:.7rem;font-weight:600;color:#8b93a1;">{lot:g} lot · sinyal {sistem}</span></span>'
+        f'<span style="font-weight:800;font-size:1.2rem;color:{rc};">{rets}</span></div>'
+        f'<div style="position:relative;height:12px;background:#eef1f4;border-radius:999px;margin:.75rem 0 .45rem;">'
+        f'<div style="position:absolute;left:{flo}%;width:{fhi-flo}%;top:0;bottom:0;background:{fill};border-radius:999px;"></div>'
+        f'<div style="position:absolute;left:0;top:-4px;bottom:-4px;width:3px;background:#dc2626;border-radius:2px;"></div>'
+        f'<div style="position:absolute;left:{ent_pct}%;top:-4px;bottom:-4px;width:2px;background:#9aa2b1;"></div>'
+        f'<div style="position:absolute;left:{cur_pct}%;top:50%;width:15px;height:15px;background:{fill};'
+        f'border:2px solid #fff;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 1px 3px rgba(0,0,0,.25);"></div>'
+        f'</div>'
+        f'<div style="display:flex;justify-content:space-between;font-size:.72rem;color:#6b7280;">'
+        f'<span style="color:#dc2626;font-weight:600;">↓ jual di {rp(trail)}</span>'
+        f'<span>beli {rp(entry)}</span><span style="color:#1a1f2e;font-weight:600;">skrg {rp(cur)}</span></div>'
+        f'<div style="font-size:.82rem;font-weight:600;color:{sc};margin-top:.5rem;">'
+        f'{stat}  ·  P/L {rp(pl_rp)}</div></div>')
+
+
 ana = {}
 _ap = DATA_DIR / "analysis.json"
 if _ap.exists():
@@ -370,23 +412,18 @@ with t_jurnal:
         opn = [r for r in recs if r["status"] == "open"]
         cld = [r for r in recs if r["status"] == "closed"]
         if opn:
-            st.markdown(":material/push_pin: **Posisi terbuka** — `trail` = stop trailing "
-                        "sekarang (jual kalau harga < trail); vs sinyal sistem")
-            orows = []
+            st.markdown(":material/push_pin: **Posisi kamu** — bar HIJAU = untung, MERAH = rugi. "
+                        "Titik makin ke KIRI (dekat garis merah) = makin deket harus **jual**.")
+            _cards = ['<div style="display:flex;flex-direction:column;gap:.6rem;">']
             for r in opn:
                 cur = pxmap.get(r["ticker"])
                 p = jpl(r, cur)
                 tr = trailing_stop_level(get_connection(), r["ticker"],
                                          r["entry_date"], r["stop"])["trail"]
-                orows.append({
-                    "saham": code(r["ticker"]), "lot": r["lot"], "entry": r["entry"],
-                    "sekarang": cur,
-                    "return %": (p["net_pct"] * 100 if p["net_pct"] is not None else None),
-                    "P/L": p["pl_rp"], "trail": tr,
-                    "sistem": sigmap.get(r["ticker"], "-"),
-                    "alarm": "⚠️ JUAL" if (tr and cur and cur < tr) else ""})
-            st.dataframe(pd.DataFrame(orows), hide_index=True,
-                         use_container_width=True, column_config=cfg)
+                _cards.append(_poscard(code(r["ticker"]), r["lot"], r["entry"], cur, tr,
+                                       p["net_pct"], p["pl_rp"], sigmap.get(r["ticker"], "-")))
+            _cards.append("</div>")
+            st.markdown("".join(_cards), unsafe_allow_html=True)
             with st.expander("✔  Tutup posisi"):
                 opts = {f"#{r['id']} · {code(r['ticker'])} @ {rp(r['entry'])}": r["id"]
                         for r in opn}
