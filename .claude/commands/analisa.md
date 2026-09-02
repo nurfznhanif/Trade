@@ -1,6 +1,6 @@
 ---
 description: Analisa harian saham IDX — baca data folder + artikel berita ASLI, tulis data/analysis.json
-argument-hint: "[ticker opsional, mis. BBRI = deep-dive 1 saham]"
+argument-hint: "[BBRI = deep-dive · 'modal 1500000' = hitung lot]"
 ---
 
 Kamu lagi ngerjain **ANALISA HARIAN SAHAM IDX** buat project ini. Hasil akhir: file
@@ -9,8 +9,12 @@ Kamu lagi ngerjain **ANALISA HARIAN SAHAM IDX** buat project ini. Hasil akhir: f
 > **KAMU (LLM) yang mutusin — dengan baca DATA + ISI ARTIKEL berita beneran, BUKAN skor
 > rule-based/lexicon. Judul media saham Indonesia sering clickbait: SELALU cross-check ke badan berita.**
 
-Argumen: `$ARGUMENTS` — kalau diisi ticker (mis. `BBRI`), fokus deep-dive saham itu.
-Kalau kosong, jalanin analisa harian penuh (semua kandidat teratas).
+Argumen `$ARGUMENTS`:
+- ticker (mis. `BBRI`) → fokus deep-dive saham itu.
+- `modal <angka>` (mis. `modal 1500000`, `modal 1,5jt`, `modal 1.5 juta`) → SIZING otomatis:
+  hitung berapa LOT tiap rekomendasi BELI buat modal segitu. Default risiko 2%/trade
+  (`modal 1500000 risiko 1` buat ganti). Parse "juta"/"jt" = ×1.000.000, "rb"/"ribu" = ×1.000.
+- kosong → analisa harian penuh (semua kandidat teratas).
 
 ## Langkah
 
@@ -49,6 +53,8 @@ IHSG belum ada di DB, jadi tone makro dibaca dari berita.
 - `action`: `BELI` / `BELI (tenang)` / `BELI (spekulatif)` / `TUNGGU PULLBACK` / `HINDARI`
 - `flag`: `good` / `neutral` / `caution` / `danger` · `conviction`: `Tinggi` / `Sedang-Tinggi` / `Sedang` / `-`
 - entry/target/stop = integer (HINDARI → `null`).
+- KALAU argumen ada `modal`: tambah `"lot": N` di TIAP call BELI (hasil sizing di aturan bawah) +
+  `"modal": <angka>` di top-level JSON. Tanpa modal → nggak usah field lot.
 
 **Aturan keputusan:**
 - entry dekat harga sekarang / area support; stop di bawah support 20-hari.
@@ -57,8 +63,11 @@ IHSG belum ada di DB, jadi tone makro dibaca dari berita.
   ingetin: "biarin lari — geser stop naik (trailing high−3×ATR), jangan jual pas kena target".
 - **MAKRO (regime):** baca REGIME IHSG di brief. Risk-off = lebih SELEKTIF + ukuran lebih KECIL
   (BUKAN stop total — backtest: risk-off masih rata2 +2,86%). Tulis regime + sikap di field `macro`.
-- **SIZING:** ingetin user pakai risk-based (risiko 1–2% modal/trade); jarak entry↔stop yang
-  nentuin lot, bukan nebak (`python scripts/journal.py size ...` atau kalkulator di dashboard).
+- **SIZING:** kalau argumen ada `modal`, HITUNG lot tiap call BELI — pakai
+  `python -c "from trade.risk import position_size; print(position_size(MODAL, ENTRY, STOP, risk_pct=0.02)['lot'])"`
+  (atau rumus: `lot = floor(modal*risk / ((entry-stop)*100))`, cap `lot*100*entry <= modal`; kalau 1 lot
+  aja kemahalan → `lot: 0`). Tambah `"lot"` per call BELI + `"modal"` top-level; di `reason` sebut singkat
+  (mis. "modal 1,5jt → 1 lot"). TANPA modal: cukup ingetin user pakai kalkulator dashboard.
 - RSI > 70 **atau** sudah +25–30% sebulan → `TUNGGU PULLBACK` (jangan kejar).
 - Insider selling / rugi / PER cangkang / pump / suspensi → `HINDARI` atau `caution`, **walau skor mesin hijau**.
 - Data fundamental yfinance yang ekstrem/ngaco (PBV/DER/divyield absurd) → ABAIKAN, sebut kalau relevan.

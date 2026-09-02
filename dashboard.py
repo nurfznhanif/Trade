@@ -162,7 +162,8 @@ nfocus = len(q("SELECT ticker FROM focus_list")) if not sig.empty else 0
 st.markdown(
     f'<div class="hdr"><div class="brand">{IC_LOGO}<h1>Trade</h1></div>'
     f'<span class="date">Analisa {ana.get("generated", "—")}</span></div>'
-    f'<div class="sub">Keputusan oleh Claude (LLM) · saham IDX · bukan nasihat keuangan</div>',
+    f'<div class="sub">Keputusan oleh Claude (LLM) · saham IDX · bukan nasihat keuangan'
+    f'{(" · sizing buat modal " + rp(ana["modal"])) if ana.get("modal") else ""}</div>',
     unsafe_allow_html=True)
 
 with st.expander("⚙️  Aksi cepat — refresh data / buat brief"):
@@ -240,6 +241,15 @@ def callcard(c):
                 f'Konviksi {c.get("conviction", "-")}</div>')
     else:
         nums = '<div class="nums warn">Nol posisi</div>'
+    lot = c.get("lot")
+    if lot is not None and str(c.get("action", "")).startswith("BELI") and c.get("entry"):
+        if lot > 0:
+            nums += (f'<div style="margin-top:.5rem;display:inline-block;font-size:.82rem;'
+                     f'font-weight:800;color:#15803d;background:#dcfce7;border-radius:8px;'
+                     f'padding:.28rem .6rem;">Beli {lot} lot · {rp(int(lot) * 100 * c["entry"])}</div>')
+        else:
+            nums += ('<div style="margin-top:.5rem;font-size:.78rem;color:#b45309;">'
+                     '1 lot pun kemahalan buat modalmu</div>')
     return (f'<div class="call {flag}"><div class="r1"><span class="tk">{code(c["ticker"])}</span>'
             f'<span class="act {flag}">{c["action"]}</span></div>{nums}'
             f'<div class="reason">{c.get("reason", "")}</div></div>')

@@ -21,19 +21,26 @@ TRAIL_MULT = 3.0   # trailing = high tertinggi - 3*ATR (samain sama backtest)
 def position_size(capital: float, entry: float, stop: float,
                   risk_pct: float = 0.01, lot: int = LOT) -> dict:
     """Ukuran posisi biar risiko (entry->stop) ≈ risk_pct * modal.
+    Buat modal KECIL: kalau hitungan risiko = 0 lot TAPI 1 lot masih kebeli, kasih 1 lot
+    (risiko dikit di atas target — itu minimum, nggak bisa beli separo lot).
     Return {lot, shares, modal, risk_rp, risk_pct_real, note}."""
     if not (entry and stop and entry > stop > 0):
         return {"lot": 0, "shares": 0, "modal": 0.0, "risk_rp": 0.0,
                 "risk_pct_real": 0.0, "note": "stop harus di bawah entry (>0)"}
     per_share = entry - stop
-    lots = int((capital * risk_pct) / (per_share * lot))     # bulatkan ke bawah
-    while lots > 0 and lots * lot * entry > capital:         # jangan lebih dari modal
-        lots -= 1
+    afford = int(capital // (entry * lot))                   # max lot yang kebeli modal
+    lots = int((capital * risk_pct) / (per_share * lot))     # ideal by risiko
+    note = ""
+    if lots == 0 and afford >= 1:
+        lots, note = 1, "1 lot = risiko sedikit di ATAS target (modal kecil, ini minimum)"
+    lots = min(lots, afford)                                  # jangan lebih dari modal
+    if lots == 0:
+        note = "modal kurang buat 1 lot (kemahalan)"
     shares = lots * lot
     return {"lot": lots, "shares": shares, "modal": shares * entry,
             "risk_rp": shares * per_share,
             "risk_pct_real": (shares * per_share / capital) if capital else 0.0,
-            "note": "" if lots > 0 else "modal kurang buat 1 lot pada risiko segini"}
+            "note": note}
 
 
 def trailing_stop_level(conn, ticker: str, entry_date: str, init_stop,
