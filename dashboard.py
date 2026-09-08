@@ -65,7 +65,7 @@ section[data-testid="stSidebar"] {
     border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
 }
 section[data-testid="stSidebar"] .block-container {
-    padding-top: 1.5rem;
+    padding-top: 1rem;
     padding-left: 1.1rem;
     padding-right: 1.1rem;
 }
@@ -272,9 +272,9 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.acc-rose)   > div { border-
 
 /* Katalis clamp — potong ~3 baris, klik untuk buka penuh */
 .katalis-box { margin-top:0.35rem; font-size:0.81rem; color:#f1f5f9; line-height:1.5; }
-.katalis-box > summary { display:list-item; list-style-position:inside; cursor:pointer; outline:none; transition: color 0.15s ease; }
-.katalis-box > summary::marker { color:#38bdf8; }
-.katalis-box > summary:hover::marker { color:#7dd3fc; }
+.katalis-box > summary { display:block; cursor:pointer; outline:none; list-style:none; }
+.katalis-box > summary::-webkit-details-marker { display:none; }
+.katalis-box > summary::marker { content:""; }
 .katalis-box > summary .k-clamp { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden; }
 .katalis-box[open] > summary .k-clamp { -webkit-line-clamp:unset; display:block; }
 .katalis-lbl { color:#34d399; font-weight:700; }
@@ -322,6 +322,33 @@ section[data-testid="stSidebar"] {
 section[data-testid="stSidebar"][aria-expanded="false"] {
     width: 300px !important;
     min-width: 300px !important;
+}
+
+/* ============================================================
+   SIDEBAR NAV MENU — radio disulap jadi menu navigasi
+   ============================================================ */
+section[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] { gap: 0.2rem; }
+section[data-testid="stSidebar"] [data-testid="stRadioOption"] {
+    width: 100%;
+    padding: 0.55rem 0.75rem !important;
+    margin: 0 !important;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+section[data-testid="stSidebar"] [data-testid="stRadioOption"]:hover { background: rgba(255,255,255,0.055); }
+/* sembunyikan bulatan radio (sibling sebelum teks) */
+section[data-testid="stSidebar"] [data-testid="stRadioOption"] div:has(> [data-testid="stMarkdownContainer"]) > div:first-child { display: none !important; }
+section[data-testid="stSidebar"] [data-testid="stRadioOption"] [data-testid="stMarkdownContainer"] p {
+    font-size: 0.9rem !important; font-weight: 600 !important; color: #94a3b8 !important; letter-spacing: 0.01em;
+}
+/* item aktif */
+section[data-testid="stSidebar"] [data-testid="stRadioOption"]:has(input:checked) {
+    background: rgba(56,189,248,0.13);
+    box-shadow: inset 3px 0 0 #38bdf8;
+}
+section[data-testid="stSidebar"] [data-testid="stRadioOption"]:has(input:checked) [data-testid="stMarkdownContainer"] p {
+    color: #f8fafc !important; font-weight: 700 !important;
 }
 
 details[data-testid="stExpander"] summary { font-size:0.8rem; font-weight:600; }
@@ -424,6 +451,7 @@ def get_pipeline_status() -> dict:
         "detail": "Ketik /analisa — auto-refresh kalau basi",
         "class": "warning",
         "timestamp": None,
+        "date_id": None,
     }
     try:
         conn = get_connection()
@@ -442,6 +470,13 @@ def get_pipeline_status() -> dict:
                 time_display = asof_date
 
             status["timestamp"] = time_display
+            _bulan = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+                      "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
+            try:
+                _y, _m, _d = asof_date.split("-")
+                status["date_id"] = f"{int(_d)} {_bulan[int(_m)]} {_y}"
+            except Exception:
+                status["date_id"] = asof_date
             if asof_date == today_str:
                 status["ok"] = True
                 status["label"] = "Data: Segar Hari Ini"
@@ -493,306 +528,256 @@ j_summary = jsummary(journal_records, px_map)
 with st.sidebar:
     st.markdown(
         """
-        <div style="margin-bottom:1rem;">
-            <div style="font-size:1.15rem;font-weight:800;letter-spacing:-0.02em;color:#f8fafc;">
+        <div style="text-align:center;margin-top:-0.9rem;margin-bottom:1.1rem;">
+            <div style="font-size:1.95rem;font-weight:800;letter-spacing:-0.01em;color:#f8fafc;line-height:1.1;">
                 TRADE <span style="color:#38bdf8;">IDX</span>
-            </div>
-            <div style="font-size:0.75rem;color:#94a3b8;margin-top:2px;">
-                Cockpit Swing Trading · LLM-First
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    # Status Pipeline & Modal Badge
+    # Status data — badge tunggal (gabungan badge + caption lama)
     st.markdown(
-        f"<span class='badge-pill {pipeline_stat['class']}'>{pipeline_stat['label']}</span>",
-        unsafe_allow_html=True,
-    )
-    st.caption(f"Update: {pipeline_stat['timestamp'] or '—'}")
-
-    st.markdown(
-        f"<div style='background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.25);border-radius:8px;padding:0.5rem 0.75rem;margin:0.6rem 0;'>"
-        f"<div style='font-size:0.7rem;color:#94a3b8;text-transform:uppercase;font-weight:600;'>Acuan Modal Aktif</div>"
-        f"<div style='font-size:1.1rem;font-weight:700;color:#38bdf8;font-family:JetBrains Mono,monospace;'>{rp(modal_acuan)}</div>"
-        f"<div style='font-size:0.72rem;color:#94a3b8;'>Fase 5: Validasi Duit Kecil</div>"
-        f"</div>",
+        f"<div style='text-align:center;margin-bottom:0.3rem;'><span class='badge-pill {pipeline_stat['class']}'>Data: {pipeline_stat['date_id'] or '—'}</span></div>",
         unsafe_allow_html=True,
     )
 
     st.divider()
 
-    # Ringkasan Portofolio Nyata (Jurnal)
-    st.markdown("###### Ringkasan Jurnal Real")
-    s_col1, s_col2 = st.columns(2)
-    s_col1.metric("Realized", rp(j_summary["realized"]))
-    s_col2.metric("Floating", rp(j_summary["unreal"]))
-    s_col3, s_col4 = st.columns(2)
-    s_col3.metric("Total P/L", rp(j_summary["total"]))
-    s_col4.metric("Win Rate", f"{j_summary['win_rate']*100:.0f}%")
-
-    st.divider()
-
-    # Pre-Trade Discipline Checklist
-    st.markdown("###### Checklist Disiplin Sebelum Beli")
-    st.checkbox("Regime IHSG aman (bukan crash)", value=True, key="chk_regime")
-    st.checkbox("Lot sesuai sizing modal Rp1,5jt", value=True, key="chk_sizing")
-    st.checkbox("Stop Loss langsung dipasang di broker", value=True, key="chk_sl")
-
-    st.divider()
-
-    # Aksi Cepat On-Demand
-    st.markdown("###### Kontrol Pipeline")
-    if st.button("Refresh Data (~5 mnt)", icon=":material/refresh:", use_container_width=True):
-        with st.status("Menarik harga, berita, makro, skor...", expanded=True) as s_box:
-            res = subprocess.run([sys.executable, str(ROOT / "scripts" / "daily.py")],
-                                 capture_output=True, text=True, encoding="utf-8", errors="replace")
-            s_box.code((res.stdout or "")[-1400:])
-            s_box.update(label="Refresh Selesai!", state="complete")
-        st.cache_data.clear()
-        st.rerun()
-
-    if st.button("Regenerasi Brief", icon=":material/description:", use_container_width=True):
-        with st.spinner("Menyusun data/brief_latest.md..."):
-            subprocess.run([sys.executable, str(ROOT / "scripts" / "brief.py"), "--quiet"],
-                           capture_output=True, text=True, encoding="utf-8", errors="replace")
-        st.success("Brief mutakhir siap!")
-
-    st.caption("DISCLAIMER: Bukan Robot Otomatis & Bukan Nasihat Keuangan (DYOR).")
+    # Navigasi utama (menu sidebar) — ganti tab horizontal
+    menu = st.radio(
+        "Navigasi",
+        ["Beranda", "Sinyal Mesin", "Sentimen Berita", "Fundamental", "Chart Harga", "Paper Trading", "Jurnal Real"],
+        label_visibility="collapsed",
+        key="nav_menu",
+    )
 
 # ==============================================================================
 # 5. MAIN COCKPIT: MACRO REGIME & SUMMARY KPI
 # ==============================================================================
-# Top Macro Regime Bar
-try:
-    ms = macro_snapshot(get_connection())
-    reg = ms.get("regime", {})
-    if reg.get("level"):
-        r_col = {"risk-on": "#34d399", "netral": "#fbbf24", "risk-off": "#fb7185"}.get(reg.get("regime"), "#94a3b8")
-        ma200_str = f"{reg['ma200']:.0f}" if reg.get("ma200") else "—"
+if menu == "Beranda":
+    # Top Macro Regime Bar
+    try:
+        ms = macro_snapshot(get_connection())
+        reg = ms.get("regime", {})
+        if reg.get("level"):
+            r_col = {"risk-on": "#34d399", "netral": "#fbbf24", "risk-off": "#fb7185"}.get(reg.get("regime"), "#94a3b8")
+            ma200_str = f"{reg['ma200']:.0f}" if reg.get("ma200") else "—"
 
-        with st.container(border=True):
-            m_top1, m_top2 = st.columns([1.3, 2.7])
-            with m_top1:
-                st.markdown(
-                    f"<div style='font-size:0.74rem;font-weight:700;color:{r_col};text-transform:uppercase;letter-spacing:0.06em;'>"
-                    f"REGIME MAKRO IHSG &nbsp;·&nbsp; <b>{reg.get('regime', '').upper()}</b></div>"
-                    f"<div style='font-size:1.25rem;font-weight:800;color:#f8fafc;margin-top:2px;font-family:JetBrains Mono,monospace;'>"
-                    f"IHSG {reg.get('level', 0):.0f} &nbsp;<span style='font-size:0.8rem;color:#94a3b8;font-weight:500;'>(MA200: {ma200_str})</span></div>",
-                    unsafe_allow_html=True,
-                )
-                st.caption(reg.get("note", ""))
-
-            with m_top2:
-                pills = []
-                for ind in ms.get("indikator", []):
-                    if ind.get("ticker") == "^JKSE" or ind.get("chg1mo") is None:
-                        continue
-                    clr = "#34d399" if ind.get("arah") == "bagus" else "#fb7185"
-                    pills.append(
-                        f"<span class='badge-pill neutral'>{ind['label']}: <b style='color:{clr};font-family:JetBrains Mono,monospace;'>{ind['chg1mo']*100:+.1f}%</b></span>"
-                    )
-                st.markdown("<div style='display:flex;gap:0.4rem;flex-wrap:wrap;'>" + "".join(pills) + "</div>", unsafe_allow_html=True)
-                if analysis.get("macro"):
-                    with st.expander("Analisis Makro Claude — baca lengkap"):
-                        st.markdown(
-                            f"<div style='font-size:0.84rem;color:#cbd5e1;line-height:1.6;'>{analysis.get('macro')}</div>",
-                            unsafe_allow_html=True,
-                        )
-except Exception:
-    pass
-
-# Metric Strip (KPIs)
-nbeli = sum(1 for c in calls if str(c.get("action", "")).startswith("BELI") and c.get("flag") == "good")
-ncare = sum(1 for c in calls if str(c.get("action", "")).startswith("BELI") and c.get("flag") != "good")
-ntunggu = sum(1 for c in calls if "TUNGGU" in str(c.get("action", "")))
-nhindari = sum(1 for c in calls if c.get("action") == "HINDARI")
-
-kpi_defs = [
-    ("green",  nbeli,       "dot-buy",     "BELI Aman",       "Rekomendasi aman, katalis nyata & valuasi sehat"),
-    ("amber",  ncare,       "dot-caution", "BELI Spekulatif", "Katalis ada namun ada risiko arus asing lego / cyclical"),
-    ("indigo", ntunggu,     "dot-wait",    "Tunggu Pullback", "Bagus tapi harga sudah kemahalan / overbought"),
-    ("rose",   nhindari,    "dot-avoid",   "Hindari (Trap)",  "Red flag laporan keuangan atau pump buatan"),
-    ("sky",    focus_count, "",            "Dipantau Fokus",  "Universe saham likuid aktif di radar sistem"),
-]
-_tiles = []
-for cls, val, dot, lbl, tip in kpi_defs:
-    dot_html = f"<span class='dot {dot}'></span>" if dot else ""
-    _tiles.append(
-        f"<div class='kpi-tile {cls}' title='{tip}'>"
-        f"<div class='kpi-num'>{val}</div>"
-        f"<div class='kpi-lbl'>{dot_html}{lbl}</div>"
-        f"</div>"
-    )
-st.markdown("<div class='kpi-row'>" + "".join(_tiles) + "</div>", unsafe_allow_html=True)
-
-# ==============================================================================
-# 6. HERO SECTION: KARTU KEPUTUSAN CLAUDE (KATALIS VS CAVEAT + R:R RATIO)
-# ==============================================================================
-st.markdown("---")
-h_top1, h_top2 = st.columns([1.5, 1.5])
-with h_top1:
-    st.markdown(
-        clean_html("""
-        <div style="font-size:1.15rem;font-weight:800;color:#f8fafc;">
-            Keputusan Claude Hari Ini (LLM-First)
-        </div>
-        <div style="font-size:0.78rem;color:#94a3b8;">
-            Analisis Berita Mendalam · Rasio Risk/Reward · Proteksi Modal Rp1,5jt
-        </div>
-        """),
-        unsafe_allow_html=True,
-    )
-with h_top2:
-    hero_filter = st.segmented_control(
-        "Filter Rekomendasi",
-        options=["Semua", "Beli", "Tunggu", "Hindari"],
-        default="Semua",
-        label_visibility="collapsed",
-    )
-
-filtered_calls = calls
-if hero_filter == "Beli":
-    filtered_calls = [c for c in calls if str(c.get("action", "")).startswith("BELI")]
-elif hero_filter == "Tunggu":
-    filtered_calls = [c for c in calls if "TUNGGU" in str(c.get("action", ""))]
-elif hero_filter == "Hindari":
-    filtered_calls = [c for c in calls if str(c.get("action", "")) == "HINDARI"]
-
-if not filtered_calls:
-    st.info("Belum ada analisa rekomendasi Claude aktif untuk filter ini.")
-else:
-    col_left, col_right = st.columns(2)
-    cols_pair = [col_left, col_right]
-
-    for idx, c in enumerate(filtered_calls):
-        target_col = cols_pair[idx % 2]
-        action = str(c.get("action", ""))
-        flag = c.get("flag", "neutral")
-        t_code = code(c.get("ticker", ""))
-        conviction = c.get("conviction", "-")
-
-        entry = c.get("entry")
-        target = c.get("target")
-        stop = c.get("stop")
-
-        # Badge aksi styling Linear Dark
-        if action.startswith("BELI") and flag == "good":
-            badge_action = f"<span class='badge-pill success'><span class='dot dot-buy'></span> {action}</span>"
-            accent = "green"
-        elif action.startswith("BELI"):
-            badge_action = f"<span class='badge-pill warning'><span class='dot dot-caution'></span> {action}</span>"
-            accent = "amber"
-        elif "TUNGGU" in action:
-            badge_action = f"<span class='badge-pill neutral'><span class='dot dot-wait'></span> {action}</span>"
-            accent = "indigo"
-        else:
-            badge_action = f"<span class='badge-pill danger'><span class='dot dot-avoid'></span> {action}</span>"
-            accent = "rose"
-
-        with target_col:
             with st.container(border=True):
-                # Baris 1: Header Ticker + Badge + R:R Ratio
-                r1_a, r1_b = st.columns([1.3, 1])
-                r1_a.markdown(f"#### **{t_code}** &nbsp; {badge_action}<span class='acc-{accent}' style='display:none'>·</span>", unsafe_allow_html=True)
-
-                rr_num, rr_str = calc_rr_ratio(entry, target, stop)
-                rr_pill = f"<span class='badge-pill info' title='Risk to Reward Ratio'>R:R {rr_str}</span>" if rr_num > 0 else ""
-
-                r1_b.markdown(
-                    f"<div style='text-align:right;font-size:0.75rem;color:#94a3b8;padding-top:4px;'>"
-                    f"{rr_pill} &nbsp; Konviksi: <b>{conviction}</b></div>",
-                    unsafe_allow_html=True,
-                )
-
-                # Baris 2: Tiga Metrik Harga Tabular
-                if entry and target and stop:
-                    risk_pct = abs((entry - stop) / entry * 100)
-                    reward_pct = abs((target - entry) / entry * 100)
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric("Entry", rp(entry))
-                    m2.metric("Target", rp(target), f"+{reward_pct:.1f}%")
-                    m3.metric("Rem Rugi", rp(stop), f"-{risk_pct:.1f}%", delta_color="inverse")
-                elif entry and target:
-                    m1, m2 = st.columns(2)
-                    m1.metric("Area Tunggu", rp(entry))
-                    m2.metric("Target", rp(target))
-                else:
+                m_top1, m_top2 = st.columns([1.3, 2.7])
+                with m_top1:
                     st.markdown(
-                        "<div style='background:rgba(244,63,94,0.1);border:1px solid rgba(244,63,94,0.25);border-radius:8px;padding:0.4rem 0.75rem;font-size:0.78rem;color:#fb7185;font-weight:700;text-align:center;'>"
-                        "NOL POSISI — Terdeteksi rekayasa keuangan / pump buatan</div>",
+                        f"<div style='font-size:0.74rem;font-weight:700;color:{r_col};text-transform:uppercase;letter-spacing:0.06em;'>"
+                        f"REGIME MAKRO IHSG &nbsp;·&nbsp; <b>{reg.get('regime', '').upper()}</b></div>"
+                        f"<div style='font-size:1.25rem;font-weight:800;color:#f8fafc;margin-top:2px;font-family:JetBrains Mono,monospace;'>"
+                        f"IHSG {reg.get('level', 0):.0f} &nbsp;<span style='font-size:0.8rem;color:#94a3b8;font-weight:500;'>(MA200: {ma200_str})</span></div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.caption(reg.get("note", ""))
+
+                with m_top2:
+                    pills = []
+                    for ind in ms.get("indikator", []):
+                        if ind.get("ticker") == "^JKSE" or ind.get("chg1mo") is None:
+                            continue
+                        clr = "#34d399" if ind.get("arah") == "bagus" else "#fb7185"
+                        pills.append(
+                            f"<span class='badge-pill neutral'>{ind['label']}: <b style='color:{clr};font-family:JetBrains Mono,monospace;'>{ind['chg1mo']*100:+.1f}%</b></span>"
+                        )
+                    st.markdown("<div style='display:flex;justify-content:flex-end;gap:0.4rem;flex-wrap:wrap;margin-top:0.5rem;'>" + "".join(pills) + "</div>", unsafe_allow_html=True)
+
+                # Analisis makro — full-width di bawah kolom, biar gak 'bolong'
+                if analysis.get("macro"):
+                    st.markdown(
+                        f"<div style='margin-top:1.3rem;padding-top:1.15rem;border-top:1px solid rgba(255,255,255,0.08);'>"
+                        f"<div style='font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#38bdf8;margin-bottom:0.35rem;'>Analisis Makro Claude</div>"
+                        f"<div style='font-size:0.83rem;color:#cbd5e1;line-height:1.65;'>{analysis.get('macro')}</div>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+    except Exception:
+        pass
+
+    # Metric Strip (KPIs)
+    nbeli = sum(1 for c in calls if str(c.get("action", "")).startswith("BELI") and c.get("flag") == "good")
+    ncare = sum(1 for c in calls if str(c.get("action", "")).startswith("BELI") and c.get("flag") != "good")
+    ntunggu = sum(1 for c in calls if "TUNGGU" in str(c.get("action", "")))
+    nhindari = sum(1 for c in calls if c.get("action") == "HINDARI")
+
+    kpi_defs = [
+        ("green",  nbeli,       "dot-buy",     "BELI Aman",       "Rekomendasi aman, katalis nyata & valuasi sehat"),
+        ("amber",  ncare,       "dot-caution", "BELI Spekulatif", "Katalis ada namun ada risiko arus asing lego / cyclical"),
+        ("indigo", ntunggu,     "dot-wait",    "Tunggu Pullback", "Bagus tapi harga sudah kemahalan / overbought"),
+        ("rose",   nhindari,    "dot-avoid",   "Hindari (Trap)",  "Red flag laporan keuangan atau pump buatan"),
+        ("sky",    focus_count, "",            "Dipantau Fokus",  "Universe saham likuid aktif di radar sistem"),
+    ]
+    _tiles = []
+    for cls, val, dot, lbl, tip in kpi_defs:
+        dot_html = f"<span class='dot {dot}'></span>" if dot else ""
+        _tiles.append(
+            f"<div class='kpi-tile {cls}' title='{tip}'>"
+            f"<div class='kpi-num'>{val}</div>"
+            f"<div class='kpi-lbl'>{dot_html}{lbl}</div>"
+            f"</div>"
+        )
+    st.markdown("<div class='kpi-row'>" + "".join(_tiles) + "</div>", unsafe_allow_html=True)
+
+    # ==============================================================================
+    # 6. HERO SECTION: KARTU KEPUTUSAN CLAUDE (KATALIS VS CAVEAT + R:R RATIO)
+    # ==============================================================================
+    st.markdown("---")
+    h_top1, h_top2 = st.columns([1.5, 1.5])
+    with h_top1:
+        st.markdown(
+            clean_html(f"""
+            <div style="font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#94a3b8;">
+                Acuan Modal
+            </div>
+            <div style="font-size:1.5rem;font-weight:800;color:#38bdf8;font-family:'JetBrains Mono',monospace;letter-spacing:-0.02em;line-height:1.15;">
+                {rp(modal_acuan)}
+            </div>
+            """),
+            unsafe_allow_html=True,
+        )
+    with h_top2:
+        hero_filter = st.segmented_control(
+            "Filter Rekomendasi",
+            options=["Beli", "Tunggu", "Hindari"],
+            default="Beli",
+            label_visibility="collapsed",
+        )
+
+    filtered_calls = calls
+    if hero_filter == "Beli":
+        filtered_calls = [c for c in calls if str(c.get("action", "")).startswith("BELI")]
+    elif hero_filter == "Tunggu":
+        filtered_calls = [c for c in calls if "TUNGGU" in str(c.get("action", ""))]
+    elif hero_filter == "Hindari":
+        filtered_calls = [c for c in calls if str(c.get("action", "")) == "HINDARI"]
+
+    if not filtered_calls:
+        st.info("Belum ada analisa rekomendasi Claude aktif untuk filter ini.")
+    else:
+        for idx, c in enumerate(filtered_calls):
+            target_col = st.container()  # 1 kolom — kartu melebar penuh
+            action = str(c.get("action", ""))
+            flag = c.get("flag", "neutral")
+            t_code = code(c.get("ticker", ""))
+            conviction = c.get("conviction", "-")
+
+            entry = c.get("entry")
+            target = c.get("target")
+            stop = c.get("stop")
+
+            # Badge aksi styling Linear Dark
+            if action.startswith("BELI") and flag == "good":
+                badge_action = f"<span class='badge-pill success'><span class='dot dot-buy'></span> {action}</span>"
+                accent = "green"
+            elif action.startswith("BELI"):
+                badge_action = f"<span class='badge-pill warning'><span class='dot dot-caution'></span> {action}</span>"
+                accent = "amber"
+            elif "TUNGGU" in action:
+                badge_action = f"<span class='badge-pill neutral'><span class='dot dot-wait'></span> {action}</span>"
+                accent = "indigo"
+            else:
+                badge_action = f"<span class='badge-pill danger'><span class='dot dot-avoid'></span> {action}</span>"
+                accent = "rose"
+
+            with target_col:
+                with st.container(border=True):
+                    # Baris 1: Header Ticker + Badge + R:R Ratio
+                    r1_a, r1_b = st.columns([1.3, 1])
+                    r1_a.markdown(f"#### **{t_code}** &nbsp; {badge_action}<span class='acc-{accent}' style='display:none'>·</span>", unsafe_allow_html=True)
+
+                    rr_num, rr_str = calc_rr_ratio(entry, target, stop)
+                    rr_pill = f"<span class='badge-pill info' title='Risk to Reward Ratio'>R:R {rr_str}</span>" if rr_num > 0 else ""
+
+                    r1_b.markdown(
+                        f"<div style='text-align:right;font-size:0.75rem;color:#94a3b8;padding-top:4px;'>"
+                        f"{rr_pill} &nbsp; Konviksi: <b>{conviction}</b></div>",
                         unsafe_allow_html=True,
                     )
 
-                # Baris 3: Sizing Box Khusus Modal Acuan
-                if action.startswith("BELI") and entry:
-                    pos_calc = position_size(modal_acuan, entry, stop or (entry * 0.95))
-                    suggested_lot = c.get("lot") if c.get("lot") is not None else pos_calc["lot"]
-
-                    if suggested_lot > 0:
-                        total_modal_trade = suggested_lot * 100 * entry
-                        pct_of_capital = (total_modal_trade / modal_acuan) * 100
-                        st.markdown(
-                            f"<div style='background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);border-radius:8px;padding:0.4rem 0.7rem;font-size:0.78rem;color:#34d399;font-weight:600;display:flex;justify-content:space-between;align-items:center;margin:0.5rem 0;'>"
-                            f"<span>Saran Sizing: <b>{suggested_lot} lot</b> ({rp(total_modal_trade)})</span>"
-                            f"<span style='font-family:JetBrains Mono,monospace;'>{pct_of_capital:.0f}% modal</span></div>",
-                            unsafe_allow_html=True,
-                        )
+                    # Baris 2: Tiga Metrik Harga Tabular
+                    if entry and target and stop:
+                        risk_pct = abs((entry - stop) / entry * 100)
+                        reward_pct = abs((target - entry) / entry * 100)
+                        m1, m2, m3 = st.columns(3)
+                        m1.metric("Entry", rp(entry))
+                        m2.metric("Target", rp(target), f"+{reward_pct:.1f}%")
+                        m3.metric("Rem Rugi", rp(stop), f"-{risk_pct:.1f}%", delta_color="inverse")
+                    elif entry and target:
+                        m1, m2 = st.columns(2)
+                        m1.metric("Area Tunggu", rp(entry))
+                        m2.metric("Target", rp(target))
                     else:
-                        one_lot = 100 * entry
                         st.markdown(
-                            f"<div style='background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:8px;padding:0.4rem 0.7rem;font-size:0.78rem;color:#fbbf24;margin:0.5rem 0;'>"
-                            f"1 lot ({rp(one_lot)}) kemahalan untuk modal {rp(modal_acuan)}. Disiplin: Lewatkan!</div>",
+                            "<div style='background:rgba(244,63,94,0.1);border:1px solid rgba(244,63,94,0.25);border-radius:8px;padding:0.4rem 0.75rem;font-size:0.78rem;color:#fb7185;font-weight:700;text-align:center;'>"
+                            "NOL POSISI — Terdeteksi rekayasa keuangan / pump buatan</div>",
                             unsafe_allow_html=True,
                         )
-                elif "TUNGGU" in action:
-                    st.markdown(
-                        f"<div style='background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:0.4rem 0.7rem;font-size:0.78rem;color:#94a3b8;margin:0.5rem 0;'>"
-                        f"Tunggu Pullback: Jangan kejar harga atas. Sabar antri di area ~{rp(entry)}.</div>",
-                        unsafe_allow_html=True,
-                    )
 
-                # Baris 4: Katalis vs Caveat (Split Analysis Claude)
-                katalis_text, risiko_text = parse_claude_reason(c.get("reason", ""))
-                if katalis_text:
-                    if len(katalis_text) > 150:
+                    # Baris 3: Sizing Box Khusus Modal Acuan
+                    if action.startswith("BELI") and entry:
+                        pos_calc = position_size(modal_acuan, entry, stop or (entry * 0.95))
+                        suggested_lot = c.get("lot") if c.get("lot") is not None else pos_calc["lot"]
+
+                        if suggested_lot > 0:
+                            total_modal_trade = suggested_lot * 100 * entry
+                            pct_of_capital = (total_modal_trade / modal_acuan) * 100
+                            st.markdown(
+                                f"<div style='background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);border-radius:8px;padding:0.4rem 0.7rem;font-size:0.78rem;color:#34d399;font-weight:600;display:flex;justify-content:space-between;align-items:center;margin:0.5rem 0;'>"
+                                f"<span>Saran Sizing: <b>{suggested_lot} lot</b> ({rp(total_modal_trade)})</span>"
+                                f"<span style='font-family:JetBrains Mono,monospace;'>{pct_of_capital:.0f}% modal</span></div>",
+                                unsafe_allow_html=True,
+                            )
+                        else:
+                            one_lot = 100 * entry
+                            st.markdown(
+                                f"<div style='background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:8px;padding:0.4rem 0.7rem;font-size:0.78rem;color:#fbbf24;margin:0.5rem 0;'>"
+                                f"1 lot ({rp(one_lot)}) kemahalan untuk modal {rp(modal_acuan)}. Disiplin: Lewatkan!</div>",
+                                unsafe_allow_html=True,
+                            )
+                    elif "TUNGGU" in action:
                         st.markdown(
-                            f"<details class='katalis-box'><summary><span class='k-clamp'>"
-                            f"<span class='katalis-lbl'>KATALIS:</span> {katalis_text}"
-                            f"</span></summary></details>",
+                            f"<div style='background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:0.4rem 0.7rem;font-size:0.78rem;color:#94a3b8;margin:0.5rem 0;'>"
+                            f"Tunggu Pullback: Jangan kejar harga atas. Sabar antri di area ~{rp(entry)}.</div>",
                             unsafe_allow_html=True,
                         )
-                    else:
+
+                    # Baris 4: Katalis vs Caveat (Split Analysis Claude)
+                    katalis_text, risiko_text = parse_claude_reason(c.get("reason", ""))
+                    if katalis_text:
+                        if len(katalis_text) > 150:
+                            st.markdown(
+                                f"<details class='katalis-box'><summary><span class='k-clamp'>"
+                                f"<span class='katalis-lbl'>KATALIS:</span> {katalis_text}"
+                                f"</span></summary></details>",
+                                unsafe_allow_html=True,
+                            )
+                        else:
+                            st.markdown(
+                                f"<div class='katalis-box'>"
+                                f"<span class='katalis-lbl'>KATALIS:</span> {katalis_text}</div>",
+                                unsafe_allow_html=True,
+                            )
+                    if risiko_text:
                         st.markdown(
-                            f"<div class='katalis-box'>"
-                            f"<span class='katalis-lbl'>KATALIS:</span> {katalis_text}</div>",
+                            f"<div style='font-size:0.81rem;color:#fbbf24;line-height:1.45;margin-top:0.3rem;background:rgba(245,158,11,0.06);border-left:2px solid #f59e0b;padding:0.3rem 0.5rem;border-radius:4px;'>"
+                            f"<span style='font-weight:700;'>RISIKO / CAVEAT:</span> {risiko_text}</div>",
                             unsafe_allow_html=True,
                         )
-                if risiko_text:
-                    st.markdown(
-                        f"<div style='font-size:0.81rem;color:#fbbf24;line-height:1.45;margin-top:0.3rem;background:rgba(245,158,11,0.06);border-left:2px solid #f59e0b;padding:0.3rem 0.5rem;border-radius:4px;'>"
-                        f"<span style='font-weight:700;'>RISIKO / CAVEAT:</span> {risiko_text}</div>",
-                        unsafe_allow_html=True,
-                    )
 
 # ==============================================================================
-# 7. ENAM TAB PEMBANDING INTERAKTIF (DARK THEME)
+# 7. HALAMAN NAVIGASI (konten per menu sidebar)
 # ==============================================================================
-st.markdown("<div style='height: 0.8rem;'></div>", unsafe_allow_html=True)
-t_mesin, t_sent, t_fund, t_chart, t_paper, t_jurnal = st.tabs([
-    ":material/tune: 1. Sinyal Mesin",
-    ":material/newspaper: 2. Sentimen Berita",
-    ":material/account_balance: 3. Fundamental",
-    ":material/show_chart: 4. Chart Harga",
-    ":material/wallet: 5. Paper Trading",
-    ":material/menu_book: 6. Jurnal Real (Modal Rp1,5jt)",
-])
 
 # ------------------------------------------------------------------------------
 # TAB 1: SINYAL MESIN (TEKNIKAL MURNI)
 # ------------------------------------------------------------------------------
-with t_mesin:
+elif menu == "Sinyal Mesin":
     st.markdown(
         clean_html("""
         <div class="edu-box">
@@ -867,7 +852,7 @@ with t_mesin:
 # ------------------------------------------------------------------------------
 # TAB 2: SENTIMEN BERITA (CROSS-CHECK CLAUDE)
 # ------------------------------------------------------------------------------
-with t_sent:
+elif menu == "Sentimen Berita":
     st.markdown(
         clean_html("""
         <div class="edu-box blue">
@@ -950,7 +935,7 @@ with t_sent:
 # ------------------------------------------------------------------------------
 # TAB 3: FUNDAMENTAL (VALUASI & RASIO KUNCI)
 # ------------------------------------------------------------------------------
-with t_fund:
+elif menu == "Fundamental":
     st.markdown(
         clean_html("""
         <div class="edu-box">
@@ -1023,7 +1008,7 @@ with t_fund:
 # ------------------------------------------------------------------------------
 # TAB 4: CHART HARGA
 # ------------------------------------------------------------------------------
-with t_chart:
+elif menu == "Chart Harga":
     st.markdown(
         clean_html("""
         <div class="edu-box">
@@ -1093,7 +1078,7 @@ with t_chart:
 # ------------------------------------------------------------------------------
 # TAB 5: PAPER TRADING (SIMULASI BEBAS RISIKO)
 # ------------------------------------------------------------------------------
-with t_paper:
+elif menu == "Paper Trading":
     st.markdown(
         clean_html("""
         <div class="edu-box">
@@ -1159,7 +1144,7 @@ with t_paper:
 # ------------------------------------------------------------------------------
 # TAB 6: JURNAL REAL (FASE 5: VALIDASI MODAL KECIL ~RP1,5JT)
 # ------------------------------------------------------------------------------
-with t_jurnal:
+elif menu == "Jurnal Real":
     st.markdown(
         clean_html("""
         <div class="edu-box">
