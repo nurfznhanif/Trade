@@ -56,13 +56,18 @@ html, body, [class*="css"], .stApp {
 .block-container {
     padding-top: 1.2rem;
     padding-bottom: 3.5rem;
-    max-width: 1260px;
+    max-width: 1600px;
+    padding-left: 2.5rem;
+    padding-right: 2.5rem;
 }
 
 /* Sidebar Styling */
 section[data-testid="stSidebar"] {
     background-color: #0d121f !important;
     border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+    width: 250px !important;
+    min-width: 250px !important;
+    max-width: 250px !important;
 }
 section[data-testid="stSidebar"] .block-container {
     padding-top: 1rem;
@@ -71,14 +76,14 @@ section[data-testid="stSidebar"] .block-container {
 }
 
 /* Native Containers as Dark Glass Cards */
-div[data-testid="stVerticalBlockBorderWrapper"] > div {
+div[data-testid="stVerticalBlock"].st-emotion-cache-1t3r9wv {
     background-color: #111827 !important;
     border: 1px solid rgba(255, 255, 255, 0.08) !important;
     border-radius: 14px !important;
-    padding: 1.4rem 1.6rem !important;
+    padding: 1.75rem 2rem !important;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-div[data-testid="stVerticalBlockBorderWrapper"] > div:hover {
+div[data-testid="stVerticalBlock"].st-emotion-cache-1t3r9wv:hover {
     border-color: rgba(255, 255, 255, 0.16) !important;
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35) !important;
 }
@@ -266,10 +271,10 @@ button[data-baseweb="tab"] { transition: background-color 0.15s ease, color 0.15
 /* ============================================================
    KARTU KEPUTUSAN — aksen kiri berwarna per aksi (via :has)
    ============================================================ */
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.acc-green)  > div { border-left:3px solid #10b981 !important; }
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.acc-amber)  > div { border-left:3px solid #f59e0b !important; }
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.acc-indigo) > div { border-left:3px solid #6366f1 !important; }
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.acc-rose)   > div { border-left:3px solid #f43f5e !important; }
+div[data-testid="stVerticalBlock"].st-emotion-cache-1t3r9wv:has(.acc-green)  { border-left:3px solid #10b981 !important; }
+div[data-testid="stVerticalBlock"].st-emotion-cache-1t3r9wv:has(.acc-amber)  { border-left:3px solid #f59e0b !important; }
+div[data-testid="stVerticalBlock"].st-emotion-cache-1t3r9wv:has(.acc-indigo) { border-left:3px solid #6366f1 !important; }
+div[data-testid="stVerticalBlock"].st-emotion-cache-1t3r9wv:has(.acc-rose)   { border-left:3px solid #f43f5e !important; }
 
 /* Katalis clamp — potong ~3 baris, klik untuk buka penuh */
 .katalis-box { margin-top:0.35rem; font-size:0.81rem; color:#f1f5f9; line-height:1.5; }
@@ -321,8 +326,8 @@ section[data-testid="stSidebar"] {
     visibility: visible !important;
 }
 section[data-testid="stSidebar"][aria-expanded="false"] {
-    width: 300px !important;
-    min-width: 300px !important;
+    width: 250px !important;
+    min-width: 250px !important;
 }
 
 /* ============================================================
@@ -658,6 +663,8 @@ if menu == "Beranda":
     elif hero_filter == "Hindari":
         filtered_calls = [c for c in calls if str(c.get("action", "")) == "HINDARI"]
 
+    st.markdown("<div style='height:0.9rem;'></div>", unsafe_allow_html=True)  # jarak Acuan Modal → card
+
     if not filtered_calls:
         st.info("Belum ada analisa rekomendasi Claude aktif untuk filter ini.")
     else:
@@ -729,7 +736,7 @@ if menu == "Beranda":
                             total_modal_trade = suggested_lot * 100 * entry
                             pct_of_capital = (total_modal_trade / modal_acuan) * 100
                             st.markdown(
-                                f"<div style='background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);border-radius:8px;padding:0.4rem 0.7rem;font-size:0.78rem;color:#34d399;font-weight:600;display:flex;justify-content:space-between;align-items:center;margin:0.5rem 0;'>"
+                                f"<div style='background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);border-radius:8px;padding:0.4rem 0.9rem;font-size:0.78rem;color:#34d399;font-weight:600;display:inline-flex;gap:1.4rem;align-items:center;margin:0.5rem 0;'>"
                                 f"<span>Saran Sizing: <b>{suggested_lot} lot</b> ({rp(total_modal_trade)})</span>"
                                 f"<span style='font-family:JetBrains Mono,monospace;'>{pct_of_capital:.0f}% modal</span></div>",
                                 unsafe_allow_html=True,
@@ -1250,6 +1257,27 @@ elif menu == "Jurnal Real":
                 """),
                 unsafe_allow_html=True,
             )
+
+            # Ringkasan P/L total — tepat di atas daftar posisi
+            st.markdown(
+                "<div style='font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;margin:0.2rem 0 0.5rem;'>Ringkasan Untung / Rugi</div>",
+                unsafe_allow_html=True,
+            )
+
+            def _pl_cls(v):
+                return "green" if (v or 0) >= 0 else "rose"
+
+            _sum_defs = [
+                (_pl_cls(j_summary["total"]),    rp(j_summary["total"]),               "Total P/L"),
+                (_pl_cls(j_summary["realized"]), rp(j_summary["realized"]),            "Realized (sudah jual)"),
+                (_pl_cls(j_summary["unreal"]),   rp(j_summary["unreal"]),              "Floating (belum jual)"),
+                ("sky",                          f"{j_summary['win_rate']*100:.0f}%",  "Win Rate"),
+            ]
+            _sum_html = "".join(
+                f"<div class='kpi-tile {cls}'><div class='kpi-num'>{val}</div><div class='kpi-lbl'>{lbl}</div></div>"
+                for cls, val, lbl in _sum_defs
+            )
+            st.markdown("<div class='kpi-row' style='margin-bottom:0.6rem;'>" + _sum_html + "</div>", unsafe_allow_html=True)
 
             with st.expander("Cara baca bar ini — Rem Rugi (Stop Loss) vs Kunci Cuan (Trailing Lock)"):
                 st.markdown(
