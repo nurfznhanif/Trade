@@ -75,6 +75,7 @@ div[data-testid="stVerticalBlockBorderWrapper"] > div {
     background-color: #111827 !important;
     border: 1px solid rgba(255, 255, 255, 0.08) !important;
     border-radius: 14px !important;
+    padding: 1.4rem 1.6rem !important;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 div[data-testid="stVerticalBlockBorderWrapper"] > div:hover {
@@ -628,7 +629,7 @@ if menu == "Beranda":
     # 6. HERO SECTION: KARTU KEPUTUSAN CLAUDE (KATALIS VS CAVEAT + R:R RATIO)
     # ==============================================================================
     st.markdown("---")
-    h_top1, h_top2 = st.columns([1.5, 1.5])
+    h_top1, h_top2 = st.columns([1.5, 1.5], vertical_alignment="center")
     with h_top1:
         st.markdown(
             clean_html(f"""
