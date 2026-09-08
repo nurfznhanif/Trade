@@ -1,4 +1,6 @@
-"""Dashboard Trade — Streamlit. Keputusan Claude (LLM) di depan, sinyal mesin jadi pembanding.
+"""Dashboard Trade — Linear/Raycast Dark Fintech & Trading Cockpit HUD.
+Keputusan Claude (LLM) di depan, sinyal mesin jadi pembanding.
+Fase 5: Validasi Modal Kecil (~Rp1,5 Juta) & Jurnal Disiplin Psikologi.
 
 Jalanin:  streamlit run dashboard.py  ->  http://localhost:8501
 """
@@ -15,529 +17,1409 @@ import streamlit as st
 ROOT = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-from trade.config import DATA_DIR          # noqa: E402
-from trade.db import get_connection        # noqa: E402
-from trade.fundamentals import red_flags, sanitize   # noqa: E402
-from trade.journal import add_trade, close_trade, pl as jpl, summary as jsummary   # noqa: E402
-from trade.macro import snapshot as macro_snapshot   # noqa: E402
-from trade.risk import trailing_stop_level   # noqa: E402
+from trade.config import DATA_DIR                                # noqa: E402
+from trade.db import get_connection                              # noqa: E402
+from trade.fundamentals import red_flags, sanitize               # noqa: E402
+from trade.journal import add_trade, close_trade, pl as jpl, summary as jsummary  # noqa: E402
+from trade.macro import snapshot as macro_snapshot               # noqa: E402
+from trade.risk import position_size, trailing_stop_level        # noqa: E402
 
-st.set_page_config(page_title="Trade IDX", layout="wide")
+# ==============================================================================
+# 1. PAGE CONFIG & LINEAR/RAYCAST DARK FINTECH DESIGN SYSTEM
+# ==============================================================================
+st.set_page_config(
+    page_title="Trade IDX — Cockpit",
+    page_icon=":material/trending_up:",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-IC_LOGO = ('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" '
-           'stroke-linecap="round" stroke-linejoin="round"><path d="M22 7 13.5 15.5 8.5 10.5 2 17"/>'
-           '<path d="M16 7h6v6"/></svg>')
 
-CSS = """
+def clean_html(s: str) -> str:
+    """Bersihkan semua indentasi agar Streamlit tidak menganggapnya indented code block."""
+    return "\n".join(line.strip() for line in s.strip().splitlines() if line.strip())
+
+
+DARK_FINTECH_CSS = clean_html("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-#MainMenu, header[data-testid="stHeader"], footer, [data-testid="stToolbar"] {display:none !important;}
-.stAppDeployButton {display:none !important;}
-html, body, [class*="css"], .stApp {font-family:'Inter',system-ui,sans-serif;}
-.stApp {background:#f6f7f9;}
-.block-container {padding-top:1.6rem; padding-bottom:3rem; max-width:1180px;}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
-.hdr {display:flex; align-items:center; justify-content:space-between;}
-.hdr .brand {display:flex; align-items:center; gap:.5rem;}
-.hdr .brand svg {width:26px; height:26px; color:#16a34a;}
-.hdr h1 {font-size:1.7rem; font-weight:800; margin:0; letter-spacing:-.02em; color:#1a1f2e;}
-.hdr .date {color:#6b7280; font-size:.82rem; font-weight:600;}
-.sub {color:#8b93a1; font-size:.84rem; margin:.15rem 0 1.6rem;}
+#MainMenu, header[data-testid="stHeader"], footer, [data-testid="stToolbar"] {display: none !important;}
+.stAppDeployButton {display: none !important;}
 
-.tiles {display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:.8rem; margin-bottom:1.7rem;}
-.tile {background:#fff; border:1px solid #ecedf0; border-radius:16px; padding:1rem 1.2rem;}
-.tile .n {font-size:2rem; font-weight:800; line-height:1; color:#1a1f2e;}
-.tile .l {color:#8b93a1; font-size:.74rem; font-weight:600; text-transform:uppercase;
-          letter-spacing:.05em; margin-top:.45rem; display:flex; align-items:center;}
-.tile.buy .n {color:#16a34a;} .tile.care .n {color:#f59e0b;} .tile.wait .n {color:#6b7280;} .tile.sell .n {color:#dc2626;}
-.dot {display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px;}
-.dot.buy {background:#16a34a;} .dot.care {background:#f59e0b;} .dot.wait {background:#6b7280;} .dot.sell {background:#dc2626;}
+/* Canvas & Backgrounds */
+html, body, [class*="css"], .stApp {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: #080c14 !important;
+    color: #f1f5f9;
+}
+.block-container {
+    padding-top: 1.2rem;
+    padding-bottom: 3.5rem;
+    max-width: 1260px;
+}
 
-.macro {background:#fff; border:1px solid #ecedf0; border-radius:16px; padding:.95rem 1.2rem;
-        margin-bottom:1.7rem; font-size:.88rem; color:#374151; line-height:1.5;}
-.macro .ml {font-size:.68rem; text-transform:uppercase; letter-spacing:.05em; color:#16a34a;
-            font-weight:700; margin-bottom:.4rem; display:flex; align-items:center; gap:.4rem;}
-.macro .ml svg {width:14px; height:14px;}
+/* Sidebar Styling */
+section[data-testid="stSidebar"] {
+    background-color: #0d121f !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+section[data-testid="stSidebar"] .block-container {
+    padding-top: 1.5rem;
+    padding-left: 1.1rem;
+    padding-right: 1.1rem;
+}
 
-.sec {display:flex; align-items:center; gap:.45rem; font-size:1.15rem; font-weight:700;
-      color:#1a1f2e; margin:.3rem 0 1rem;}
-.sec svg {width:20px; height:20px; color:#16a34a;}
+/* Native Containers as Dark Glass Cards */
+div[data-testid="stVerticalBlockBorderWrapper"] > div {
+    background-color: #111827 !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 14px !important;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+div[data-testid="stVerticalBlockBorderWrapper"] > div:hover {
+    border-color: rgba(255, 255, 255, 0.16) !important;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35) !important;
+}
 
-.cg {display:grid; grid-template-columns:repeat(auto-fill,minmax(285px,1fr)); gap:.9rem;}
-.call {background:#fff; border:1px solid #ecedf0; border-left:4px solid #16a34a;
-       border-radius:16px; padding:1.1rem 1.2rem; transition:.15s;}
-.call:hover {box-shadow:0 8px 24px rgba(20,30,50,.07); transform:translateY(-2px);}
-.call.danger {border-left-color:#dc2626;} .call.caution {border-left-color:#f59e0b;}
-.call.neutral {border-left-color:#9aa2b1;}
-.call .r1 {display:flex; justify-content:space-between; align-items:center; margin-bottom:.7rem;}
-.call .tk {font-weight:800; font-size:1.18rem; color:#1a1f2e;}
-.call .act {font-size:.7rem; font-weight:700; padding:.22rem .6rem; border-radius:999px;}
-.call .act.good {background:#dcfce7; color:#15803d;} .call .act.danger {background:#fee2e2; color:#b91c1c;}
-.call .act.caution {background:#fef3c7; color:#b45309;} .call .act.neutral {background:#eef1f4; color:#475569;}
-.call .nums {display:flex; align-items:baseline; gap:.5rem;}
-.call .nums .entry {font-size:1.2rem; font-weight:800; color:#1a1f2e;}
-.call .nums .arw {color:#c2c8d0; font-weight:700;}
-.call .nums .tgt {font-size:1.5rem; font-weight:800; color:#16a34a;}
-.call .nums.warn {font-size:1.05rem; font-weight:800; color:#b91c1c;}
-.call .stopl {font-size:.78rem; color:#6b7280; margin-top:.35rem;}
-.call .stopl b {color:#dc2626; font-size:.62rem; letter-spacing:.04em; margin-right:2px;}
-.call .reason {color:#8b93a1; font-size:.75rem; line-height:1.45; margin-top:.7rem;}
+/* Typography & Numerals */
+div[data-testid="stMetricValue"] {
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 1.25rem !important;
+    color: #f8fafc !important;
+    letter-spacing: -0.02em;
+}
+div[data-testid="stMetricLabel"] {
+    color: #94a3b8 !important;
+    font-size: 0.74rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+}
 
-.stTabs [data-baseweb="tab-list"] {gap:.3rem;}
-.stTabs [data-baseweb="tab"] {font-weight:600;}
+/* Status Badges & Dots */
+.dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+}
+.dot-buy { background-color: #10b981; box-shadow: 0 0 8px rgba(16, 185, 129, 0.5); }
+.dot-caution { background-color: #f59e0b; box-shadow: 0 0 8px rgba(245, 158, 11, 0.5); }
+.dot-wait { background-color: #6366f1; box-shadow: 0 0 8px rgba(99, 102, 241, 0.5); }
+.dot-avoid { background-color: #f43f5e; box-shadow: 0 0 8px rgba(244, 63, 94, 0.5); }
+
+.badge-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.2rem 0.6rem;
+    border-radius: 9999px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+.badge-pill.success { background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+.badge-pill.warning { background: rgba(245, 158, 11, 0.12); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+.badge-pill.danger { background: rgba(244, 63, 94, 0.12); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.3); }
+.badge-pill.neutral { background: rgba(255, 255, 255, 0.06); color: #cbd5e1; border: 1px solid rgba(255, 255, 255, 0.1); }
+.badge-pill.info { background: rgba(56, 189, 248, 0.12); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); }
+
+/* Linear Callout Boxes */
+.edu-box {
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    border-radius: 10px;
+    padding: 0.7rem 0.95rem;
+    font-size: 0.82rem;
+    color: #a7f3d0;
+    line-height: 1.5;
+    margin-bottom: 0.85rem;
+}
+.edu-box.amber { background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.25); color: #fde68a; }
+.edu-box.blue { background: rgba(56, 189, 248, 0.08); border-color: rgba(56, 189, 248, 0.25); color: #bae6fd; }
+
+/* Dynamic Position Bar (Dark HUD) */
+.pos-bar-wrapper {
+    background: #111827;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 0.85rem;
+}
+.pos-track {
+    position: relative;
+    height: 10px;
+    background: #1f293d;
+    border-radius: 9999px;
+    margin: 0.75rem 0 0.5rem;
+}
+.pos-fill {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-radius: 9999px;
+}
+.pos-stop-line {
+    position: absolute;
+    top: -4px;
+    bottom: -4px;
+    width: 3px;
+    background: #f43f5e;
+    border-radius: 2px;
+    z-index: 2;
+    box-shadow: 0 0 6px rgba(244, 63, 94, 0.6);
+}
+.pos-entry-line {
+    position: absolute;
+    top: -4px;
+    bottom: -4px;
+    width: 2px;
+    background: #94a3b8;
+    z-index: 2;
+}
+.pos-cur-dot {
+    position: absolute;
+    top: 50%;
+    width: 15px;
+    height: 15px;
+    border: 2px solid #0f172a;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.6);
+    z-index: 3;
+}
+.pos-scale {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* Tabs */
+div[data-baseweb="tab-list"] {
+    gap: 0.35rem;
+    background-color: #0d121f !important;
+    padding: 0.3rem !important;
+    border-radius: 12px !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+button[data-baseweb="tab"] {
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    padding: 0.45rem 0.95rem !important;
+    color: #94a3b8 !important;
+}
+button[data-baseweb="tab"][aria-selected="true"] {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    color: #f8fafc !important;
+    font-weight: 700 !important;
+}
+
+/* ============================================================
+   MOTION SYSTEM — halus & profesional
+   ============================================================ */
+@keyframes fadeUp { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
+@keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+@keyframes growX  { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes pulseAmber { 0%,100% { box-shadow:0 0 0 0 rgba(245,158,11,0.5); } 50% { box-shadow:0 0 0 5px rgba(245,158,11,0); } }
+@keyframes pulseRose  { 0%,100% { box-shadow:0 0 0 0 rgba(244,63,94,0.5); } 50% { box-shadow:0 0 0 5px rgba(244,63,94,0); } }
+
+.stButton button { transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, border-color 0.15s ease !important; }
+.stButton button:hover { transform: translateY(-1px); }
+button[data-baseweb="tab"] { transition: background-color 0.15s ease, color 0.15s ease !important; }
+
+/* Titik alert berdenyut halus untuk menarik mata (hanya waspada/bahaya) */
+.dot-caution { animation: pulseAmber 2.4s ease-out infinite; }
+.dot-avoid   { animation: pulseRose 2.4s ease-out infinite; }
+
+/* ============================================================
+   KPI TILES — berwarna & mudah di-scan sekilas
+   ============================================================ */
+.kpi-row { display:flex; gap:0.7rem; margin-top:0.9rem; flex-wrap:wrap; }
+.kpi-tile {
+    flex:1; min-width:118px; position:relative; overflow:hidden;
+    background:#111827; border:1px solid rgba(255,255,255,0.08);
+    border-radius:14px; padding:0.85rem 1rem 0.9rem;
+    animation: fadeUp 0.4s ease both;
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.kpi-tile:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.18); box-shadow: 0 8px 22px rgba(0,0,0,0.35); }
+.kpi-tile::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background: var(--acc,#94a3b8); }
+.kpi-tile .kpi-num { font-family:'JetBrains Mono',monospace; font-size:1.85rem; font-weight:700; line-height:1; letter-spacing:-0.02em; color: var(--acc,#f8fafc); }
+.kpi-tile .kpi-lbl { display:flex; align-items:center; gap:0.4rem; margin-top:0.5rem; font-size:0.68rem; text-transform:uppercase; letter-spacing:0.05em; font-weight:600; color:#94a3b8; }
+.kpi-tile.green  { --acc:#34d399; }
+.kpi-tile.amber  { --acc:#fbbf24; }
+.kpi-tile.indigo { --acc:#818cf8; }
+.kpi-tile.rose   { --acc:#fb7185; }
+.kpi-tile.sky    { --acc:#38bdf8; }
+.kpi-tile:nth-child(1){animation-delay:.02s}
+.kpi-tile:nth-child(2){animation-delay:.06s}
+.kpi-tile:nth-child(3){animation-delay:.10s}
+.kpi-tile:nth-child(4){animation-delay:.14s}
+.kpi-tile:nth-child(5){animation-delay:.18s}
+
+/* ============================================================
+   KARTU KEPUTUSAN — aksen kiri berwarna per aksi (via :has)
+   ============================================================ */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.acc-green)  > div { border-left:3px solid #10b981 !important; }
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.acc-amber)  > div { border-left:3px solid #f59e0b !important; }
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.acc-indigo) > div { border-left:3px solid #6366f1 !important; }
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.acc-rose)   > div { border-left:3px solid #f43f5e !important; }
+
+/* Katalis clamp — potong ~3 baris, klik untuk buka penuh */
+.katalis-box { margin-top:0.35rem; font-size:0.81rem; color:#f1f5f9; line-height:1.5; }
+.katalis-box > summary { display:list-item; list-style-position:inside; cursor:pointer; outline:none; transition: color 0.15s ease; }
+.katalis-box > summary::marker { color:#38bdf8; }
+.katalis-box > summary:hover::marker { color:#7dd3fc; }
+.katalis-box > summary .k-clamp { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden; }
+.katalis-box[open] > summary .k-clamp { -webkit-line-clamp:unset; display:block; }
+.katalis-lbl { color:#34d399; font-weight:700; }
+
+/* Tooltip chart (Vega) — dark, samain dengan tema */
+#vg-tooltip-element, #vg-tooltip-element.vg-tooltip {
+    background-color:#0d121f !important;
+    border:1px solid rgba(255,255,255,0.14) !important;
+    border-radius:10px !important;
+    color:#e2e8f0 !important;
+    font-family:'Inter', sans-serif !important;
+    box-shadow:0 10px 30px rgba(0,0,0,0.55) !important;
+    padding:8px 11px !important;
+}
+#vg-tooltip-element .key { color:#94a3b8 !important; font-weight:500 !important; }
+#vg-tooltip-element .value { color:#f1f5f9 !important; font-weight:600 !important; font-family:'JetBrains Mono', monospace !important; }
+
+/* ============================================================
+   KARTU POSISI — animasi bar terisi & baris mode ringkas
+   ============================================================ */
+.pos-bar-wrapper { animation: fadeUp 0.35s ease both; }
+.pos-fill { animation: growX 0.6s cubic-bezier(.22,1,.36,1) both; transform-origin:left center; }
+.pos-cur-dot { animation: fadeIn 0.5s ease 0.28s both; }
+.pos-mode { margin-top:0.65rem; font-size:0.76rem; font-weight:600; padding:0.4rem 0.7rem; border-radius:8px; line-height:1.4; }
+.pos-mode.locked { background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.22); color:#6ee7b7; }
+.pos-mode.risk   { background:rgba(245,158,11,0.07); border:1px solid rgba(245,158,11,0.20); color:#fcd34d; }
+
+/* ============================================================
+   SIDEBAR — label seksi tegas (perbaiki header pudar)
+   ============================================================ */
+section[data-testid="stSidebar"] h6 {
+    color:#e2e8f0 !important; font-size:0.7rem !important; text-transform:uppercase;
+    letter-spacing:0.07em; font-weight:700; margin:0.1rem 0 0.5rem;
+    display:flex; align-items:center; gap:0.45rem;
+}
+section[data-testid="stSidebar"] h6::before { content:''; width:3px; height:11px; background:#38bdf8; border-radius:2px; display:inline-block; }
+
+/* Sidebar cockpit selalu tampil — cegah collapse yang bikin nyangkut (tombol expand ada di header yang di-hide) */
+[data-testid="stSidebarCollapseButton"] { display: none !important; }
+section[data-testid="stSidebar"] {
+    transform: none !important;
+    margin-left: 0 !important;
+    visibility: visible !important;
+}
+section[data-testid="stSidebar"][aria-expanded="false"] {
+    width: 300px !important;
+    min-width: 300px !important;
+}
+
+details[data-testid="stExpander"] summary { font-size:0.8rem; font-weight:600; }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }
 </style>
-"""
-st.markdown(CSS, unsafe_allow_html=True)
+""")
+st.markdown(DARK_FINTECH_CSS, unsafe_allow_html=True)
 
 
+# Tema Altair global — samain font (Inter) & warna chart dengan design system dark
+@alt.theme.register("trade_dark", enable=True)
+def _trade_dark_theme():
+    return {
+        "config": {
+            "background": "transparent",
+            "font": "Inter, -apple-system, BlinkMacSystemFont, sans-serif",
+            "view": {"strokeWidth": 0},
+            "axis": {
+                "labelColor": "#cbd5e1",
+                "titleColor": "#94a3b8",
+                "labelFont": "Inter, sans-serif",
+                "titleFont": "Inter, sans-serif",
+                "labelFontSize": 12,
+                "titleFontSize": 12,
+                "titleFontWeight": 600,
+                "gridColor": "rgba(255,255,255,0.06)",
+                "domainColor": "rgba(255,255,255,0.10)",
+                "tickColor": "rgba(255,255,255,0.10)",
+            },
+            "legend": {
+                "labelColor": "#cbd5e1",
+                "titleColor": "#94a3b8",
+                "labelFont": "Inter, sans-serif",
+                "titleFont": "Inter, sans-serif",
+                "symbolType": "circle",
+            },
+            "title": {"color": "#f1f5f9", "font": "Inter, sans-serif", "fontSize": 14, "fontWeight": 700, "anchor": "start"},
+        }
+    }
+
+
+# ==============================================================================
+# 2. HELPER FUNCTIONS & DATA QUERIES
+# ==============================================================================
 @st.cache_data(ttl=300)
-def q(sql, params=None):
-    return pd.read_sql_query(sql, get_connection(), params=params)
-
-
-def rp(v):
+def q(sql: str, params=None) -> pd.DataFrame:
+    """Eksekusi query SQLite dengan cache 5 menit."""
     try:
+        return pd.read_sql_query(sql, get_connection(), params=params)
+    except Exception:
+        return pd.DataFrame()
+
+
+def rp(v) -> str:
+    """Format angka ke Rupiah bersih."""
+    try:
+        if v is None:
+            return "—"
         return "Rp" + f"{int(round(float(v))):,}".replace(",", ".")
     except (TypeError, ValueError):
         return "—"
 
 
-def code(t):
-    return t.replace(".JK", "")
+def code(ticker: str) -> str:
+    """'ANTM.JK' -> 'ANTM'."""
+    return str(ticker or "").replace(".JK", "").strip().upper()
 
 
-def _poscard(saham, lot, entry, cur, trail, ret, pl_rp, sistem, verdict=None):
-    """Kartu visual 1 posisi: bar warna + titik harga vs garis jual (buat pemula)."""
-    entry = float(entry)
-    cur = float(cur) if cur else entry
-    trail = float(trail) if trail else entry * 0.95
-    lo = trail
-    hi = cur + max(cur - trail, cur * 0.02) * 0.25
-    span = (hi - lo) or 1.0
-    cl = lambda x: max(2.0, min(98.0, x))
-    ent_pct = cl((entry - lo) / span * 100)
-    cur_pct = cl((cur - lo) / span * 100)
-    fill = "#16a34a" if cur >= entry else "#dc2626"
-    flo, fhi = min(ent_pct, cur_pct), max(ent_pct, cur_pct)
-    cushion = cur - trail
-    if cur < trail:
-        stat, sc = "JUAL — harga udah di bawah garis jual", "#dc2626"
-    elif cushion / cur < 0.03:
-        stat, sc = f"Waspada — harga tinggal {rp(cushion)} di atas garis jual", "#f59e0b"
-    else:
-        stat, sc = f"Aman — harga masih {rp(cushion)} di atas garis jual", "#16a34a"
-    rc = "#16a34a" if (ret is not None and ret >= 0) else "#dc2626"
-    rets = f"{ret*100:+.2f}%" if ret is not None else "—"
-    vhtml = ""
-    if verdict and verdict.get("verdict"):
-        vc = {"JUAL": "#dc2626", "WASPADA": "#f59e0b",
-              "TAHAN": "#16a34a"}.get(verdict["verdict"], "#6b7280")
-        vhtml = (f'<div style="margin-top:.45rem;font-size:.8rem;color:#374151;'
-                 f'border-top:1px dashed #ecedf0;padding-top:.45rem;">'
-                 f'🤖 <b style="color:{vc};">Claude: {verdict["verdict"]}</b> — '
-                 f'{verdict.get("reason", "")}</div>')
-    return (
-        f'<div style="background:#fff;border:1px solid #ecedf0;border-radius:14px;padding:.85rem 1.1rem;">'
-        f'<div style="display:flex;justify-content:space-between;align-items:baseline;">'
-        f'<span style="font-weight:800;font-size:1.05rem;color:#1a1f2e;">{saham} '
-        f'<span style="font-size:.7rem;font-weight:600;color:#8b93a1;">{lot:g} lot · sinyal {sistem}</span></span>'
-        f'<span style="font-weight:800;font-size:1.2rem;color:{rc};">{rets}</span></div>'
-        f'<div style="position:relative;height:12px;background:#eef1f4;border-radius:999px;margin:.75rem 0 .45rem;">'
-        f'<div style="position:absolute;left:{flo}%;width:{fhi-flo}%;top:0;bottom:0;background:{fill};border-radius:999px;"></div>'
-        f'<div style="position:absolute;left:0;top:-4px;bottom:-4px;width:3px;background:#dc2626;border-radius:2px;"></div>'
-        f'<div style="position:absolute;left:{ent_pct}%;top:-4px;bottom:-4px;width:2px;background:#9aa2b1;"></div>'
-        f'<div style="position:absolute;left:{cur_pct}%;top:50%;width:15px;height:15px;background:{fill};'
-        f'border:2px solid #fff;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 1px 3px rgba(0,0,0,.25);"></div>'
-        f'</div>'
-        f'<div style="display:flex;justify-content:space-between;font-size:.72rem;color:#6b7280;">'
-        f'<span style="color:#dc2626;font-weight:600;">↓ jual di {rp(trail)}</span>'
-        f'<span>beli {rp(entry)}</span><span style="color:#1a1f2e;font-weight:600;">skrg {rp(cur)}</span></div>'
-        f'<div style="font-size:.82rem;font-weight:600;color:{sc};margin-top:.5rem;">'
-        f'{stat}  ·  P/L {rp(pl_rp)}</div>{vhtml}</div>')
+def calc_rr_ratio(entry: float, target: float, stop: float) -> tuple[float, str]:
+    """Hitung Risk-to-Reward Ratio (R:R)."""
+    if not (entry and target and stop and target > entry and entry > stop):
+        return 0.0, "—"
+    risk = entry - stop
+    reward = target - entry
+    if risk <= 0:
+        return 0.0, "—"
+    rr = reward / risk
+    return rr, f"1 : {rr:.2f}"
 
 
-ana = {}
-_ap = DATA_DIR / "analysis.json"
-if _ap.exists():
+def parse_claude_reason(text: str) -> tuple[str, str | None]:
+    """Pisahkan narasi Claude menjadi (katalis_riil, risiko_caveat)."""
+    text = (text or "").strip()
+    split_words = [" TAPI ", " Tapi ", " namun ", " Namun ", " Hati-hati ", " Sayangnya "]
+    for sw in split_words:
+        if sw in text:
+            parts = text.split(sw, 1)
+            return parts[0].strip(), (sw.strip() + " " + parts[1].strip())
+    if text.startswith("HINDARI") or "PUMP" in text or "ILUSI" in text:
+        return "", text
+    return text, None
+
+
+def get_pipeline_status() -> dict:
+    """Cek status orkestrasi harian (daily.py jam 08:00 pagi)."""
+    status = {
+        "ok": False,
+        "label": "Pipeline 08:00: Belum Sync Hari Ini",
+        "detail": "Jalankan refresh data harian",
+        "class": "warning",
+        "timestamp": None,
+    }
     try:
-        ana = json.loads(_ap.read_text(encoding="utf-8"))
+        conn = get_connection()
+        row = conn.execute("SELECT MAX(asof), MAX(updated) FROM signals").fetchone()
+        if row and row[0]:
+            asof_date = str(row[0])[:10]
+            updated_ts = str(row[1]) if row[1] else asof_date
+            today_str = datetime.now().strftime("%Y-%m-%d")
+
+            time_display = asof_date
+            try:
+                dt = datetime.fromisoformat(updated_ts.replace("Z", "+00:00"))
+                dt_wib = dt.astimezone(timezone(timedelta(hours=7)))
+                time_display = dt_wib.strftime("%d %b %Y, %H:%M WIB")
+            except Exception:
+                time_display = asof_date
+
+            status["timestamp"] = time_display
+            if asof_date == today_str:
+                status["ok"] = True
+                status["label"] = "Pipeline 08:00 WIB: Berhasil & Segar"
+                status["detail"] = f"Data mutakhir {time_display}"
+                status["class"] = "success"
+            else:
+                status["label"] = f"Data Terakhir: {asof_date}"
+                status["detail"] = f"Update terakhir {time_display} (Hari ini belum sync)"
+                status["class"] = "warning"
     except Exception:
-        ana = {}
-calls = ana.get("calls", [])
+        pass
+    return status
 
-sig = q("SELECT * FROM signals")
-nfocus = len(q("SELECT ticker FROM focus_list")) if not sig.empty else 0
 
-st.markdown(
-    f'<div class="hdr"><div class="brand">{IC_LOGO}<h1>Trade</h1></div>'
-    f'<span class="date">Analisa {ana.get("generated", "—")}</span></div>'
-    f'<div class="sub">Keputusan oleh Claude (LLM) · saham IDX · bukan nasihat keuangan'
-    f'{(" · sizing buat modal " + rp(ana["modal"])) if ana.get("modal") else ""}</div>',
-    unsafe_allow_html=True)
+# ==============================================================================
+# 3. LOAD DATA & SETTINGS
+# ==============================================================================
+analysis = {}
+analysis_path = DATA_DIR / "analysis.json"
+if analysis_path.exists():
+    try:
+        analysis = json.loads(analysis_path.read_text(encoding="utf-8"))
+    except Exception:
+        analysis = {}
 
-with st.expander("⚙️  Aksi cepat — refresh data / buat brief"):
-    st.caption("Data ketarik OTOMATIS tiap pagi 08:00 (scheduler). Tombol ini cuma buat on-demand.")
-    ac1, ac2 = st.columns(2)
-    if ac1.button("🔄  Refresh data sekarang  (~6 menit)", use_container_width=True):
-        with st.status("Menarik harga + makro + berita + sinyal + brief...", expanded=True) as _s:
-            _r = subprocess.run([sys.executable, str(ROOT / "scripts" / "daily.py")],
-                                capture_output=True, text=True, encoding="utf-8", errors="replace")
-            _s.code((_r.stdout or "")[-1500:])
-            _s.update(label="Selesai" if _r.returncode == 0 else "Selesai (ada warning)",
-                      state="complete")
+modal_acuan = float(analysis.get("modal") or 1500000.0)
+calls = analysis.get("calls", [])
+
+signals_df = q("SELECT * FROM signals")
+focus_count = len(q("SELECT ticker FROM focus_list")) if not signals_df.empty else 0
+pipeline_stat = get_pipeline_status()
+
+# Query Portofolio Jurnal untuk Sidebar Cockpit
+journal_df = q("SELECT * FROM journal")
+last_prices = q(
+    """
+    SELECT ticker, close FROM prices WHERE (ticker, date) IN
+    (SELECT ticker, MAX(date) FROM prices GROUP BY ticker)
+    """
+)
+px_map = dict(zip(last_prices["ticker"], last_prices["close"])) if not last_prices.empty else {}
+sig_map = dict(zip(signals_df["ticker"], signals_df["action"])) if not signals_df.empty else {}
+journal_records = journal_df.to_dict("records") if not journal_df.empty else []
+j_summary = jsummary(journal_records, px_map)
+
+# ==============================================================================
+# 4. SIDEBAR COCKPIT (CONTROL PANEL & ACCOUNT HUD)
+# ==============================================================================
+with st.sidebar:
+    st.markdown(
+        """
+        <div style="margin-bottom:1rem;">
+            <div style="font-size:1.15rem;font-weight:800;letter-spacing:-0.02em;color:#f8fafc;">
+                TRADE <span style="color:#38bdf8;">IDX</span>
+            </div>
+            <div style="font-size:0.75rem;color:#94a3b8;margin-top:2px;">
+                Cockpit Swing Trading · LLM-First
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Status Pipeline & Modal Badge
+    st.markdown(
+        f"<span class='badge-pill {pipeline_stat['class']}'>{pipeline_stat['label']}</span>",
+        unsafe_allow_html=True,
+    )
+    st.caption(f"Update: {pipeline_stat['timestamp'] or '—'}")
+
+    st.markdown(
+        f"<div style='background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.25);border-radius:8px;padding:0.5rem 0.75rem;margin:0.6rem 0;'>"
+        f"<div style='font-size:0.7rem;color:#94a3b8;text-transform:uppercase;font-weight:600;'>Acuan Modal Aktif</div>"
+        f"<div style='font-size:1.1rem;font-weight:700;color:#38bdf8;font-family:JetBrains Mono,monospace;'>{rp(modal_acuan)}</div>"
+        f"<div style='font-size:0.72rem;color:#94a3b8;'>Fase 5: Validasi Duit Kecil</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+    st.divider()
+
+    # Ringkasan Portofolio Nyata (Jurnal)
+    st.markdown("###### Ringkasan Jurnal Real")
+    s_col1, s_col2 = st.columns(2)
+    s_col1.metric("Realized", rp(j_summary["realized"]))
+    s_col2.metric("Floating", rp(j_summary["unreal"]))
+    s_col3, s_col4 = st.columns(2)
+    s_col3.metric("Total P/L", rp(j_summary["total"]))
+    s_col4.metric("Win Rate", f"{j_summary['win_rate']*100:.0f}%")
+
+    st.divider()
+
+    # Pre-Trade Discipline Checklist
+    st.markdown("###### Checklist Disiplin Sebelum Beli")
+    st.checkbox("Regime IHSG aman (bukan crash)", value=True, key="chk_regime")
+    st.checkbox("Lot sesuai sizing modal Rp1,5jt", value=True, key="chk_sizing")
+    st.checkbox("Stop Loss langsung dipasang di broker", value=True, key="chk_sl")
+
+    st.divider()
+
+    # Aksi Cepat On-Demand
+    st.markdown("###### Kontrol Pipeline")
+    if st.button("Refresh Data (~5 mnt)", icon=":material/refresh:", use_container_width=True):
+        with st.status("Menarik harga, berita, makro, skor...", expanded=True) as s_box:
+            res = subprocess.run([sys.executable, str(ROOT / "scripts" / "daily.py")],
+                                 capture_output=True, text=True, encoding="utf-8", errors="replace")
+            s_box.code((res.stdout or "")[-1400:])
+            s_box.update(label="Refresh Selesai!", state="complete")
         st.cache_data.clear()
         st.rerun()
-    if ac2.button("📄  Buat brief (bahan /analisa)", use_container_width=True):
-        with st.spinner("Bikin brief..."):
+
+    if st.button("Regenerasi Brief", icon=":material/description:", use_container_width=True):
+        with st.spinner("Menyusun data/brief_latest.md..."):
             subprocess.run([sys.executable, str(ROOT / "scripts" / "brief.py"), "--quiet"],
                            capture_output=True, text=True, encoding="utf-8", errors="replace")
-        st.success("Brief siap → `data/brief_latest.md`. Sekarang ketik `/analisa` di Claude Code.")
-    st.info("**Update keputusan Claude:** ketik `/analisa` di Claude Code — dia baca brief + artikel "
-            "lalu nulis keputusan. Ini butuh Claude (LLM), jadi **nggak bisa dari tombol**. Gratis, pakai langgananmu.")
+        st.success("Brief mutakhir siap!")
 
-nbeli = sum(1 for c in calls if c["action"].startswith("BELI") and c.get("flag") == "good")
-ncare = sum(1 for c in calls if c["action"].startswith("BELI") and c.get("flag") != "good")
-ntunggu = sum(1 for c in calls if "TUNGGU" in c["action"])
-nhindari = sum(1 for c in calls if c["action"] == "HINDARI")
-st.markdown(
-    f'<div class="tiles">'
-    f'<div class="tile buy"><div class="n">{nbeli}</div>'
-    f'<div class="l"><span class="dot buy"></span>Beli</div></div>'
-    f'<div class="tile care"><div class="n">{ncare}</div>'
-    f'<div class="l"><span class="dot care"></span>Beli hati-hati</div></div>'
-    f'<div class="tile wait"><div class="n">{ntunggu}</div>'
-    f'<div class="l"><span class="dot wait"></span>Tunggu</div></div>'
-    f'<div class="tile sell"><div class="n">{nhindari}</div>'
-    f'<div class="l"><span class="dot sell"></span>Hindari</div></div>'
-    f'<div class="tile"><div class="n">{nfocus}</div>'
-    f'<div class="l">Dipantau</div></div>'
-    f'</div>', unsafe_allow_html=True)
+    st.caption("DISCLAIMER: Bukan Robot Otomatis & Bukan Nasihat Keuangan (DYOR).")
 
+# ==============================================================================
+# 5. MAIN COCKPIT: MACRO REGIME & SUMMARY KPI
+# ==============================================================================
+# Top Macro Regime Bar
 try:
-    _ms = macro_snapshot(get_connection())
-    _reg = _ms["regime"]
-    if _reg.get("level"):
-        _clr = {"risk-on": "#16a34a", "netral": "#f59e0b",
-                "risk-off": "#dc2626"}.get(_reg["regime"], "#6b7280")
-        _inds = []
-        for _i in _ms["indikator"]:
-            if _i["ticker"] == "^JKSE" or _i.get("chg1mo") is None:
-                continue
-            _c = "#16a34a" if _i.get("arah") == "bagus" else "#dc2626"
-            _inds.append(f'<span style="margin-right:1.1rem;white-space:nowrap;">{_i["label"]} '
-                         f'<b style="color:{_c}">{_i["chg1mo"]*100:+.1f}%</b></span>')
-        _ma200 = f"{_reg['ma200']:.0f}" if _reg["ma200"] else "—"
-        st.markdown(
-            f'<div class="macro" style="border-left:4px solid {_clr};">'
-            f'<div class="ml">{IC_LOGO} Regime Makro (DATA) · '
-            f'<b style="color:{_clr}">{_reg["regime"].upper()}</b></div>'
-            f'<div style="font-size:.86rem;margin-bottom:.45rem;color:#374151;">'
-            f'{_reg["note"]} — IHSG {_reg["level"]:.0f} (MA200 {_ma200})</div>'
-            f'<div style="font-size:.8rem;">{"".join(_inds)}</div></div>',
-            unsafe_allow_html=True)
+    ms = macro_snapshot(get_connection())
+    reg = ms.get("regime", {})
+    if reg.get("level"):
+        r_col = {"risk-on": "#34d399", "netral": "#fbbf24", "risk-off": "#fb7185"}.get(reg.get("regime"), "#94a3b8")
+        ma200_str = f"{reg['ma200']:.0f}" if reg.get("ma200") else "—"
+
+        with st.container(border=True):
+            m_top1, m_top2 = st.columns([1.3, 2.7])
+            with m_top1:
+                st.markdown(
+                    f"<div style='font-size:0.74rem;font-weight:700;color:{r_col};text-transform:uppercase;letter-spacing:0.06em;'>"
+                    f"REGIME MAKRO IHSG &nbsp;·&nbsp; <b>{reg.get('regime', '').upper()}</b></div>"
+                    f"<div style='font-size:1.25rem;font-weight:800;color:#f8fafc;margin-top:2px;font-family:JetBrains Mono,monospace;'>"
+                    f"IHSG {reg.get('level', 0):.0f} &nbsp;<span style='font-size:0.8rem;color:#94a3b8;font-weight:500;'>(MA200: {ma200_str})</span></div>",
+                    unsafe_allow_html=True,
+                )
+                st.caption(reg.get("note", ""))
+
+            with m_top2:
+                pills = []
+                for ind in ms.get("indikator", []):
+                    if ind.get("ticker") == "^JKSE" or ind.get("chg1mo") is None:
+                        continue
+                    clr = "#34d399" if ind.get("arah") == "bagus" else "#fb7185"
+                    pills.append(
+                        f"<span class='badge-pill neutral'>{ind['label']}: <b style='color:{clr};font-family:JetBrains Mono,monospace;'>{ind['chg1mo']*100:+.1f}%</b></span>"
+                    )
+                st.markdown("<div style='display:flex;gap:0.4rem;flex-wrap:wrap;'>" + "".join(pills) + "</div>", unsafe_allow_html=True)
+                if analysis.get("macro"):
+                    with st.expander("Analisis Makro Claude — baca lengkap"):
+                        st.markdown(
+                            f"<div style='font-size:0.84rem;color:#cbd5e1;line-height:1.6;'>{analysis.get('macro')}</div>",
+                            unsafe_allow_html=True,
+                        )
 except Exception:
     pass
 
-if ana.get("macro"):
+# Metric Strip (KPIs)
+nbeli = sum(1 for c in calls if str(c.get("action", "")).startswith("BELI") and c.get("flag") == "good")
+ncare = sum(1 for c in calls if str(c.get("action", "")).startswith("BELI") and c.get("flag") != "good")
+ntunggu = sum(1 for c in calls if "TUNGGU" in str(c.get("action", "")))
+nhindari = sum(1 for c in calls if c.get("action") == "HINDARI")
+
+kpi_defs = [
+    ("green",  nbeli,       "dot-buy",     "BELI Aman",       "Rekomendasi aman, katalis nyata & valuasi sehat"),
+    ("amber",  ncare,       "dot-caution", "BELI Spekulatif", "Katalis ada namun ada risiko arus asing lego / cyclical"),
+    ("indigo", ntunggu,     "dot-wait",    "Tunggu Pullback", "Bagus tapi harga sudah kemahalan / overbought"),
+    ("rose",   nhindari,    "dot-avoid",   "Hindari (Trap)",  "Red flag laporan keuangan atau pump buatan"),
+    ("sky",    focus_count, "",            "Dipantau Fokus",  "Universe saham likuid aktif di radar sistem"),
+]
+_tiles = []
+for cls, val, dot, lbl, tip in kpi_defs:
+    dot_html = f"<span class='dot {dot}'></span>" if dot else ""
+    _tiles.append(
+        f"<div class='kpi-tile {cls}' title='{tip}'>"
+        f"<div class='kpi-num'>{val}</div>"
+        f"<div class='kpi-lbl'>{dot_html}{lbl}</div>"
+        f"</div>"
+    )
+st.markdown("<div class='kpi-row'>" + "".join(_tiles) + "</div>", unsafe_allow_html=True)
+
+# ==============================================================================
+# 6. HERO SECTION: KARTU KEPUTUSAN CLAUDE (KATALIS VS CAVEAT + R:R RATIO)
+# ==============================================================================
+st.markdown("---")
+h_top1, h_top2 = st.columns([1.5, 1.5])
+with h_top1:
     st.markdown(
-        f'<div class="macro"><div class="ml">{IC_LOGO} Baca Makro · Claude</div>'
-        f'{ana["macro"]}</div>', unsafe_allow_html=True)
+        clean_html("""
+        <div style="font-size:1.15rem;font-weight:800;color:#f8fafc;">
+            Keputusan Claude Hari Ini (LLM-First)
+        </div>
+        <div style="font-size:0.78rem;color:#94a3b8;">
+            Analisis Berita Mendalam · Rasio Risk/Reward · Proteksi Modal Rp1,5jt
+        </div>
+        """),
+        unsafe_allow_html=True,
+    )
+with h_top2:
+    hero_filter = st.segmented_control(
+        "Filter Rekomendasi",
+        options=["Semua", "Beli", "Tunggu", "Hindari"],
+        default="Semua",
+        label_visibility="collapsed",
+    )
 
+filtered_calls = calls
+if hero_filter == "Beli":
+    filtered_calls = [c for c in calls if str(c.get("action", "")).startswith("BELI")]
+elif hero_filter == "Tunggu":
+    filtered_calls = [c for c in calls if "TUNGGU" in str(c.get("action", ""))]
+elif hero_filter == "Hindari":
+    filtered_calls = [c for c in calls if str(c.get("action", "")) == "HINDARI"]
 
-def callcard(c):
-    flag = c.get("flag", "neutral")
-    if c.get("entry"):
-        nums = (f'<div class="nums"><span class="entry">{rp(c["entry"])}</span>'
-                f'<span class="arw">&#8594;</span><span class="tgt">{rp(c["target"])}</span></div>'
-                f'<div class="stopl"><b>STOP</b>{rp(c["stop"])} &nbsp;·&nbsp; '
-                f'Konviksi {c.get("conviction", "-")}</div>')
-    else:
-        nums = '<div class="nums warn">Nol posisi</div>'
-    lot = c.get("lot")
-    if lot is not None and str(c.get("action", "")).startswith("BELI") and c.get("entry"):
-        if lot > 0:
-            nums += (f'<div style="margin-top:.5rem;display:inline-block;font-size:.82rem;'
-                     f'font-weight:800;color:#15803d;background:#dcfce7;border-radius:8px;'
-                     f'padding:.28rem .6rem;">Beli {lot} lot · {rp(int(lot) * 100 * c["entry"])}</div>')
-        else:
-            nums += ('<div style="margin-top:.5rem;font-size:.78rem;color:#b45309;">'
-                     '1 lot pun kemahalan buat modalmu</div>')
-    return (f'<div class="call {flag}"><div class="r1"><span class="tk">{code(c["ticker"])}</span>'
-            f'<span class="act {flag}">{c["action"]}</span></div>{nums}'
-            f'<div class="reason">{c.get("reason", "")}</div></div>')
-
-
-st.markdown(f'<div class="sec">{IC_LOGO} Keputusan Claude Hari Ini</div>', unsafe_allow_html=True)
-if calls:
-    st.markdown(f'<div class="cg">{"".join(callcard(c) for c in calls)}</div>', unsafe_allow_html=True)
+if not filtered_calls:
+    st.info("Belum ada analisa rekomendasi Claude aktif untuk filter ini.")
 else:
-    st.info("Belum ada analisa Claude — generate `data/analysis.json` dulu.")
+    col_left, col_right = st.columns(2)
+    cols_pair = [col_left, col_right]
 
-st.write("")
-st.write("")
+    for idx, c in enumerate(filtered_calls):
+        target_col = cols_pair[idx % 2]
+        action = str(c.get("action", ""))
+        flag = c.get("flag", "neutral")
+        t_code = code(c.get("ticker", ""))
+        conviction = c.get("conviction", "-")
+
+        entry = c.get("entry")
+        target = c.get("target")
+        stop = c.get("stop")
+
+        # Badge aksi styling Linear Dark
+        if action.startswith("BELI") and flag == "good":
+            badge_action = f"<span class='badge-pill success'><span class='dot dot-buy'></span> {action}</span>"
+            accent = "green"
+        elif action.startswith("BELI"):
+            badge_action = f"<span class='badge-pill warning'><span class='dot dot-caution'></span> {action}</span>"
+            accent = "amber"
+        elif "TUNGGU" in action:
+            badge_action = f"<span class='badge-pill neutral'><span class='dot dot-wait'></span> {action}</span>"
+            accent = "indigo"
+        else:
+            badge_action = f"<span class='badge-pill danger'><span class='dot dot-avoid'></span> {action}</span>"
+            accent = "rose"
+
+        with target_col:
+            with st.container(border=True):
+                # Baris 1: Header Ticker + Badge + R:R Ratio
+                r1_a, r1_b = st.columns([1.3, 1])
+                r1_a.markdown(f"#### **{t_code}** &nbsp; {badge_action}<span class='acc-{accent}' style='display:none'>·</span>", unsafe_allow_html=True)
+
+                rr_num, rr_str = calc_rr_ratio(entry, target, stop)
+                rr_pill = f"<span class='badge-pill info' title='Risk to Reward Ratio'>R:R {rr_str}</span>" if rr_num > 0 else ""
+
+                r1_b.markdown(
+                    f"<div style='text-align:right;font-size:0.75rem;color:#94a3b8;padding-top:4px;'>"
+                    f"{rr_pill} &nbsp; Konviksi: <b>{conviction}</b></div>",
+                    unsafe_allow_html=True,
+                )
+
+                # Baris 2: Tiga Metrik Harga Tabular
+                if entry and target and stop:
+                    risk_pct = abs((entry - stop) / entry * 100)
+                    reward_pct = abs((target - entry) / entry * 100)
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("Entry", rp(entry))
+                    m2.metric("Target", rp(target), f"+{reward_pct:.1f}%")
+                    m3.metric("Rem Rugi", rp(stop), f"-{risk_pct:.1f}%", delta_color="inverse")
+                elif entry and target:
+                    m1, m2 = st.columns(2)
+                    m1.metric("Area Tunggu", rp(entry))
+                    m2.metric("Target", rp(target))
+                else:
+                    st.markdown(
+                        "<div style='background:rgba(244,63,94,0.1);border:1px solid rgba(244,63,94,0.25);border-radius:8px;padding:0.4rem 0.75rem;font-size:0.78rem;color:#fb7185;font-weight:700;text-align:center;'>"
+                        "NOL POSISI — Terdeteksi rekayasa keuangan / pump buatan</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                # Baris 3: Sizing Box Khusus Modal Acuan
+                if action.startswith("BELI") and entry:
+                    pos_calc = position_size(modal_acuan, entry, stop or (entry * 0.95))
+                    suggested_lot = c.get("lot") if c.get("lot") is not None else pos_calc["lot"]
+
+                    if suggested_lot > 0:
+                        total_modal_trade = suggested_lot * 100 * entry
+                        pct_of_capital = (total_modal_trade / modal_acuan) * 100
+                        st.markdown(
+                            f"<div style='background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);border-radius:8px;padding:0.4rem 0.7rem;font-size:0.78rem;color:#34d399;font-weight:600;display:flex;justify-content:space-between;align-items:center;margin:0.5rem 0;'>"
+                            f"<span>Saran Sizing: <b>{suggested_lot} lot</b> ({rp(total_modal_trade)})</span>"
+                            f"<span style='font-family:JetBrains Mono,monospace;'>{pct_of_capital:.0f}% modal</span></div>",
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        one_lot = 100 * entry
+                        st.markdown(
+                            f"<div style='background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:8px;padding:0.4rem 0.7rem;font-size:0.78rem;color:#fbbf24;margin:0.5rem 0;'>"
+                            f"1 lot ({rp(one_lot)}) kemahalan untuk modal {rp(modal_acuan)}. Disiplin: Lewatkan!</div>",
+                            unsafe_allow_html=True,
+                        )
+                elif "TUNGGU" in action:
+                    st.markdown(
+                        f"<div style='background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:0.4rem 0.7rem;font-size:0.78rem;color:#94a3b8;margin:0.5rem 0;'>"
+                        f"Tunggu Pullback: Jangan kejar harga atas. Sabar antri di area ~{rp(entry)}.</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                # Baris 4: Katalis vs Caveat (Split Analysis Claude)
+                katalis_text, risiko_text = parse_claude_reason(c.get("reason", ""))
+                if katalis_text:
+                    if len(katalis_text) > 150:
+                        st.markdown(
+                            f"<details class='katalis-box'><summary><span class='k-clamp'>"
+                            f"<span class='katalis-lbl'>KATALIS:</span> {katalis_text}"
+                            f"</span></summary></details>",
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.markdown(
+                            f"<div class='katalis-box'>"
+                            f"<span class='katalis-lbl'>KATALIS:</span> {katalis_text}</div>",
+                            unsafe_allow_html=True,
+                        )
+                if risiko_text:
+                    st.markdown(
+                        f"<div style='font-size:0.81rem;color:#fbbf24;line-height:1.45;margin-top:0.3rem;background:rgba(245,158,11,0.06);border-left:2px solid #f59e0b;padding:0.3rem 0.5rem;border-radius:4px;'>"
+                        f"<span style='font-weight:700;'>RISIKO / CAVEAT:</span> {risiko_text}</div>",
+                        unsafe_allow_html=True,
+                    )
+
+# ==============================================================================
+# 7. ENAM TAB PEMBANDING INTERAKTIF (DARK THEME)
+# ==============================================================================
+st.markdown("<div style='height: 0.8rem;'></div>", unsafe_allow_html=True)
 t_mesin, t_sent, t_fund, t_chart, t_paper, t_jurnal = st.tabs([
-    ":material/settings: Sinyal Mesin (teknikal)",
-    ":material/newspaper: Sentimen",
-    ":material/account_balance: Fundamental",
-    ":material/show_chart: Chart",
-    ":material/wallet: Paper",
-    ":material/book: Jurnal"])
+    ":material/tune: 1. Sinyal Mesin",
+    ":material/newspaper: 2. Sentimen Berita",
+    ":material/account_balance: 3. Fundamental",
+    ":material/show_chart: 4. Chart Harga",
+    ":material/wallet: 5. Paper Trading",
+    ":material/menu_book: 6. Jurnal Real (Modal Rp1,5jt)",
+])
 
+# ------------------------------------------------------------------------------
+# TAB 1: SINYAL MESIN (TEKNIKAL MURNI)
+# ------------------------------------------------------------------------------
 with t_mesin:
-    st.caption("Seberapa KUAT sinyal beli tiap saham (menurut rumus teknikal). Pembanding buat keputusan Claude.")
-    if not sig.empty:
-        _b = sig[sig["action"] == "BUY"].nlargest(15, "score").copy()
-        _b["saham"] = _b["ticker"].map(code)
-        _mc = alt.Chart(_b).mark_bar().encode(
-            x=alt.X("score:Q", title="skor sinyal (makin panjang makin kuat)"),
-            y=alt.Y("saham:N", sort="-x", title=None),
-            color=alt.condition(alt.datum.rsi > 70, alt.value("#f59e0b"), alt.value("#16a34a")),
-            tooltip=[alt.Tooltip("saham"), alt.Tooltip("score:Q", title="skor", format=".2f"),
-                     alt.Tooltip("rsi:Q", title="RSI", format=".0f"),
-                     alt.Tooltip("sent:Q", title="sentimen", format="+.2f"),
-                     alt.Tooltip("close:Q", title="harga", format=",.0f")],
-        ).properties(height=380)
-        st.altair_chart(_mc, use_container_width=True)
-        st.caption("🟢 hijau = sinyal sehat  ·  🟠 oranye = RSI di atas 70 (udah kemahalan, hati-hati kejar).")
-        with st.expander("📋 Lihat tabel lengkap (semua angka)"):
-            acts = st.multiselect("Filter", ["BUY", "HOLD", "SELL"], default=["BUY"])
-            d = sig[sig["action"].isin(acts)].copy().sort_values("score", ascending=False)
-            d["saham"] = d["ticker"].map(code)
+    st.markdown(
+        clean_html("""
+        <div class="edu-box">
+            <b>Filosofi Sinyal Mesin:</b> Indikator kuantitatif murni (Moving Average & RSI) sebagai radar awal.
+            Mesin buta terhadap manipulasi berita atau laporan keuangan semu. Gunakan tab ini murni sebagai pembanding.
+        </div>
+        """),
+        unsafe_allow_html=True,
+    )
+
+    if not signals_df.empty:
+        top_buys = signals_df[signals_df["action"] == "BUY"].nlargest(15, "score").copy()
+        top_buys["saham"] = top_buys["ticker"].map(code)
+
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Sinyal BUY Mesin", len(signals_df[signals_df["action"] == "BUY"]))
+        k2.metric("Rata-rata Skor", f"{signals_df['score'].mean():.2f}")
+        k3.metric("Overbought (RSI > 70)", len(signals_df[signals_df["rsi"] > 70]), help="Saham yang sudah panas dan rawan koreksi")
+        k4.metric("Total Terpantau", len(signals_df))
+
+        # Chart Skor Mesin Altair Dark
+        chart_mesin = (
+            alt.Chart(top_buys)
+            .mark_bar(cornerRadiusTopRight=4, cornerRadiusBottomRight=4)
+            .encode(
+                x=alt.X("score:Q", title="Kekuatan Skor Sinyal (0 — 3.0)", axis=alt.Axis(gridColor="rgba(255,255,255,0.06)", labelColor="#94a3b8", titleColor="#cbd5e1")),
+                y=alt.Y("saham:N", sort="-x", title=None, axis=alt.Axis(labelColor="#f8fafc")),
+                color=alt.condition(
+                    alt.datum.rsi > 70,
+                    alt.value("#f59e0b"),
+                    alt.value("#10b981"),
+                ),
+                tooltip=[
+                    alt.Tooltip("saham", title="Saham"),
+                    alt.Tooltip("score:Q", title="Skor Mesin", format=".2f"),
+                    alt.Tooltip("rsi:Q", title="RSI", format=".0f"),
+                    alt.Tooltip("sent:Q", title="Sentimen", format="+.2f"),
+                    alt.Tooltip("close:Q", title="Harga Terakhir", format=",.0f"),
+                ],
+            )
+            .properties(height=360, background="transparent")
+            .configure_view(strokeWidth=0)
+        )
+        st.altair_chart(chart_mesin, use_container_width=True, theme=None)
+        st.caption("Hijau: Sinyal momentum sehat | Oranye: RSI > 70 (Sudah jenuh beli, rawan koreksi mendadak).")
+
+        with st.expander("Tabel Seluruh Sinyal Mesin", icon=":material/table_chart:"):
+            filter_acts = st.multiselect("Filter Status Aksi", ["BUY", "HOLD", "SELL"], default=["BUY"])
+            filtered_sig = signals_df[signals_df["action"].isin(filter_acts)].copy().sort_values("score", ascending=False)
+            filtered_sig["saham"] = filtered_sig["ticker"].map(code)
+
             st.dataframe(
-                d[["saham", "action", "score", "close", "rsi", "sent", "n_news", "stop", "target"]],
-                hide_index=True, use_container_width=True, height=420,
+                filtered_sig[["saham", "action", "score", "close", "rsi", "sent", "n_news", "stop", "target"]],
+                hide_index=True,
+                use_container_width=True,
+                height=380,
                 column_config={
-                    "action": "aksi",
-                    "score": st.column_config.ProgressColumn("skor", min_value=0, max_value=3, format="%.2f"),
-                    "close": st.column_config.NumberColumn("harga", format="Rp %.0f"),
+                    "saham": "Kode Saham",
+                    "action": "Aksi",
+                    "score": st.column_config.ProgressColumn("Skor Mesin", min_value=0, max_value=3, format="%.2f"),
+                    "close": st.column_config.NumberColumn("Harga", format="Rp %.0f"),
                     "rsi": st.column_config.NumberColumn("RSI", format="%.0f"),
-                    "sent": st.column_config.NumberColumn("sentimen", format="%+.2f"),
-                    "n_news": "berita",
-                    "stop": st.column_config.NumberColumn("stop", format="Rp %.0f"),
-                    "target": st.column_config.NumberColumn("target", format="Rp %.0f"),
-                })
-
-with t_sent:
-    st.caption("Mood BERITA tiap saham (baca ~14 hari terakhir). Sentimen positif = salah satu faktor Claude.")
-    since = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat(timespec="seconds")
-    lb = q("SELECT n.ticker AS saham, i.name AS nama, COUNT(*) AS berita, "
-           "ROUND(AVG(n.sent_score),2) AS sentimen "
-           "FROM news n JOIN instruments i ON i.ticker=n.ticker "
-           "WHERE n.sent_score IS NOT NULL AND (n.published IS NULL OR n.published>=?) "
-           "GROUP BY n.ticker HAVING berita>=3 ORDER BY sentimen DESC", (since,))
-    if not lb.empty:
-        _sd = pd.concat([lb.head(8), lb.tail(8)]).drop_duplicates("saham").copy()
-        _sd["saham"] = _sd["saham"].map(code)
-        _scc = alt.Chart(_sd).mark_bar().encode(
-            x=alt.X("sentimen:Q", title="mood berita  (−1 jelek … 0 netral … +1 bagus)"),
-            y=alt.Y("saham:N", sort="-x", title=None),
-            color=alt.condition(alt.datum.sentimen > 0, alt.value("#16a34a"), alt.value("#dc2626")),
-            tooltip=["saham", "nama", "berita", "sentimen"],
-        ).properties(height=380)
-        st.altair_chart(_scc, use_container_width=True)
-        st.caption("🟢 kanan = berita POSITIF  ·  🔴 kiri = berita NEGATIF.")
-    conf = {"sentimen": st.column_config.NumberColumn("sentimen", format="%+.2f")}
-    with st.expander("📋 Tabel + baca berita per saham"):
-        a, b = st.columns(2)
-        a.markdown("**Paling positif**")
-        a.dataframe(lb.head(10), hide_index=True, use_container_width=True, column_config=conf)
-        b.markdown("**Paling negatif**")
-        b.dataframe(lb.tail(10).iloc[::-1], hide_index=True, use_container_width=True, column_config=conf)
-        if not sig.empty:
-            tk = st.selectbox("Berita per saham", sorted(sig["ticker"].unique()))
-            st.dataframe(q("SELECT published AS terbit, sent_score AS skor, source AS sumber, "
-                           "title AS judul FROM news WHERE ticker=? ORDER BY published DESC LIMIT 25", (tk,)),
-                         hide_index=True, use_container_width=True)
-
-with t_fund:
-    f = q("SELECT * FROM fundamentals")
-    if f.empty:
-        st.info("Belum ada data fundamental.")
+                    "sent": st.column_config.NumberColumn("Sentimen", format="%+.2f"),
+                    "n_news": "Berita",
+                    "stop": st.column_config.NumberColumn("Batas Rem", format="Rp %.0f"),
+                    "target": st.column_config.NumberColumn("Target Checkpoint", format="Rp %.0f"),
+                },
+            )
     else:
-        recs = f.to_dict("records")
-        fs = pd.DataFrame([sanitize(r) for r in recs])          # buang data ngaco -> kosong
-        fs["bendera merah"] = ["; ".join(red_flags(r)) for r in recs]
-        fs["saham"] = fs["ticker"].map(code)
-        for pc in ["roe", "div_yield", "margin"]:               # fraksi -> persen buat tampil
-            fs[pc] = pd.to_numeric(fs[pc], errors="coerce") * 100
-        _fd = fs.dropna(subset=["per", "roe"])
-        _fd = _fd[(_fd["per"] > 0) & (_fd["per"] < 50) & (_fd["roe"] > -20) & (_fd["roe"] < 80)]
-        _fc = alt.Chart(_fd).mark_circle(size=70, opacity=0.55, color="#16a34a").encode(
-            x=alt.X("per:Q", title="PER  →  makin KIRI makin MURAH"),
-            y=alt.Y("roe:Q", title="ROE %  →  makin ATAS makin UNTUNG"),
-            tooltip=[alt.Tooltip("saham"), alt.Tooltip("per:Q", title="PER", format=".1f"),
-                     alt.Tooltip("roe:Q", title="ROE %", format=".1f"),
-                     alt.Tooltip("margin:Q", title="margin %", format=".1f")],
-        ).properties(height=400)
-        st.altair_chart(_fc, use_container_width=True)
-        st.caption("🎯 Pojok KIRI-ATAS = murah + untung (paling bagus). Kanan-bawah = mahal + kurang untung.")
-        with st.expander("📋 Lihat tabel rasio lengkap (semua saham)"):
+        st.info("Belum ada data sinyal di database. Jalankan scripts/generate_signals.py.")
+
+# ------------------------------------------------------------------------------
+# TAB 2: SENTIMEN BERITA (CROSS-CHECK CLAUDE)
+# ------------------------------------------------------------------------------
+with t_sent:
+    st.markdown(
+        clean_html("""
+        <div class="edu-box blue">
+            <b>Filter Clickbait & Caveat Media:</b> Banyak judul berita sensasional seperti <i>'Laba Meroket 800%'</i>.
+            Setelah dicek Claude, laba ternyata berasal dari penjualan aset (one-off) atau perusahaan justru merugi operasional.
+            Claude memeriksa isi artikel asli untuk memastikan katalisnya nyata.
+        </div>
+        """),
+        unsafe_allow_html=True,
+    )
+
+    since_date = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat(timespec="seconds")
+    news_leaderboard = q(
+        """
+        SELECT n.ticker AS saham, i.name AS nama, COUNT(*) AS berita,
+               ROUND(AVG(n.sent_score), 2) AS sentimen
+        FROM news n
+        JOIN instruments i ON i.ticker = n.ticker
+        WHERE n.sent_score IS NOT NULL AND (n.published IS NULL OR n.published >= ?)
+        GROUP BY n.ticker HAVING berita >= 3
+        ORDER BY sentimen DESC
+        """,
+        (since_date,),
+    )
+
+    if not news_leaderboard.empty:
+        chart_data = pd.concat([news_leaderboard.head(7), news_leaderboard.tail(7)]).drop_duplicates("saham").copy()
+        chart_data["saham"] = chart_data["saham"].map(code)
+
+        chart_sent = (
+            alt.Chart(chart_data)
+            .mark_bar(cornerRadiusTopRight=4, cornerRadiusBottomRight=4)
+            .encode(
+                x=alt.X("sentimen:Q", title="Mood Berita (−1.0 Sangat Negatif … 0.0 Netral … +1.0 Sangat Positif)", axis=alt.Axis(gridColor="rgba(255,255,255,0.06)", labelColor="#94a3b8", titleColor="#cbd5e1")),
+                y=alt.Y("saham:N", sort="-x", title=None, axis=alt.Axis(labelColor="#f8fafc")),
+                color=alt.condition(alt.datum.sentimen > 0, alt.value("#10b981"), alt.value("#f43f5e")),
+                tooltip=["saham", "nama", "berita", "sentimen"],
+            )
+            .properties(height=340, background="transparent")
+            .configure_view(strokeWidth=0)
+        )
+        st.altair_chart(chart_sent, use_container_width=True, theme=None)
+
+        col_pos, col_neg = st.columns(2)
+        cfg_sent = {"sentimen": st.column_config.NumberColumn("Skor Sentimen", format="%+.2f")}
+        with col_pos:
+            st.markdown("##### Top Sentimen Positif (14 Hari Terakhir)")
+            st.dataframe(news_leaderboard.head(8), hide_index=True, use_container_width=True, column_config=cfg_sent)
+        with col_neg:
+            st.markdown("##### Top Sentimen Negatif / Waspada")
+            st.dataframe(news_leaderboard.tail(8).iloc[::-1], hide_index=True, use_container_width=True, column_config=cfg_sent)
+
+        # Interactive News Reader
+        st.markdown("---")
+        st.markdown("##### Baca Berita Asli Per Saham")
+        selected_tk = st.selectbox("Pilih Saham untuk Ditinjau Beritanya:", sorted(signals_df["ticker"].unique()) if not signals_df.empty else [])
+        if selected_tk:
+            articles = q(
+                """
+                SELECT published AS terbit, sent_score AS skor, source AS sumber, title AS judul, link AS url
+                FROM news WHERE ticker = ? ORDER BY published DESC LIMIT 20
+                """,
+                (selected_tk,),
+            )
+            if not articles.empty:
+                st.dataframe(
+                    articles,
+                    hide_index=True,
+                    use_container_width=True,
+                    column_config={
+                        "skor": st.column_config.NumberColumn("Skor", format="%+.2f"),
+                        "url": st.column_config.LinkColumn("Tautan Asli"),
+                    },
+                )
+            else:
+                st.caption("Belum ada artikel berita tersimpan untuk saham ini.")
+    else:
+        st.info("Belum ada data berita atau scoring sentimen 14 hari terakhir.")
+
+# ------------------------------------------------------------------------------
+# TAB 3: FUNDAMENTAL (VALUASI & RASIO KUNCI)
+# ------------------------------------------------------------------------------
+with t_fund:
+    st.markdown(
+        clean_html("""
+        <div class="edu-box">
+            <b>Matrix Kuadran Fundamental (PER vs ROE):</b><br>
+            • <b>Kuadran Idaman (Kiri-Atas):</b> PER Rendah (Murah) & ROE Tinggi (Sangat Untung) → Sweet Spot swing trader.<br>
+            • <b>Kuadran Bahaya (Kanan-Bawah):</b> PER Tinggi (Mahal) & ROE Rendah (Kurang Untung / Boncos) → Wajib hindari!
+        </div>
+        """),
+        unsafe_allow_html=True,
+    )
+
+    fund_df = q("SELECT * FROM fundamentals")
+    if not fund_df.empty:
+        records = fund_df.to_dict("records")
+        clean_fund = pd.DataFrame([sanitize(r) for r in records])
+        clean_fund["bendera_merah"] = ["; ".join(red_flags(r)) for r in records]
+        clean_fund["saham"] = clean_fund["ticker"].map(code)
+
+        for p_col in ["roe", "div_yield", "margin"]:
+            clean_fund[p_col] = pd.to_numeric(clean_fund[p_col], errors="coerce") * 100
+
+        plot_data = clean_fund.dropna(subset=["per", "roe"]).copy()
+        plot_data = plot_data[(plot_data["per"] > 0) & (plot_data["per"] < 60) & (plot_data["roe"] > -15) & (plot_data["roe"] < 80)]
+
+        scatter_fund = (
+            alt.Chart(plot_data)
+            .mark_circle(size=85, opacity=0.7)
+            .encode(
+                x=alt.X("per:Q", title="PER (Price to Earnings) — Makin ke Kiri Makin Murah", axis=alt.Axis(gridColor="rgba(255,255,255,0.06)", labelColor="#94a3b8", titleColor="#cbd5e1")),
+                y=alt.Y("roe:Q", title="ROE % (Return on Equity) — Makin ke Atas Makin Untung", axis=alt.Axis(gridColor="rgba(255,255,255,0.06)", labelColor="#94a3b8", titleColor="#cbd5e1")),
+                color=alt.condition(
+                    (alt.datum.per < 15) & (alt.datum.roe > 15),
+                    alt.value("#34d399"),
+                    alt.value("#94a3b8"),
+                ),
+                tooltip=[
+                    alt.Tooltip("saham", title="Saham"),
+                    alt.Tooltip("per:Q", title="PER", format=".1f"),
+                    alt.Tooltip("roe:Q", title="ROE %", format=".1f"),
+                    alt.Tooltip("margin:Q", title="Net Margin %", format=".1f"),
+                    alt.Tooltip("bendera_merah:N", title="Bendera Merah"),
+                ],
+            )
+            .properties(height=380, background="transparent")
+            .configure_view(strokeWidth=0)
+        )
+        st.altair_chart(scatter_fund, use_container_width=True, theme=None)
+        st.caption("Titik hijau = Saham ideal (PER < 15 & ROE > 15%).")
+
+        with st.expander("Tabel Rasio Lengkap & Detektor Bendera Merah", icon=":material/table_chart:"):
             st.dataframe(
-                fs[["saham", "per", "pbv", "roe", "der", "div_yield", "margin", "bendera merah"]],
-                hide_index=True, use_container_width=True, height=440,
+                clean_fund[["saham", "per", "pbv", "roe", "der", "div_yield", "margin", "bendera_merah"]],
+                hide_index=True,
+                use_container_width=True,
+                height=400,
                 column_config={
+                    "saham": "Saham",
                     "per": st.column_config.NumberColumn("PER", format="%.1f"),
                     "pbv": st.column_config.NumberColumn("PBV", format="%.2f"),
                     "roe": st.column_config.NumberColumn("ROE %", format="%.1f"),
                     "der": st.column_config.NumberColumn("DER %", format="%.0f"),
-                    "div_yield": st.column_config.NumberColumn("Div yield %", format="%.2f"),
+                    "div_yield": st.column_config.NumberColumn("Div Yield %", format="%.2f"),
                     "margin": st.column_config.NumberColumn("Margin %", format="%.1f"),
-                })
+                    "bendera_merah": "Bendera Merah (Red Flags)",
+                },
+            )
+    else:
+        st.info("Data fundamental belum terisi. Jalankan scripts/fetch_fundamentals.py mingguan.")
 
+# ------------------------------------------------------------------------------
+# TAB 4: CHART HARGA
+# ------------------------------------------------------------------------------
 with t_chart:
-    if not sig.empty:
-        tk = st.selectbox("Pilih saham", sorted(sig["ticker"].unique()), key="chart")
-        px = q("SELECT date, close FROM prices WHERE ticker=? ORDER BY date", (tk,))
-        if not px.empty:
-            px = px.set_index("date")
-            px["MA20"] = px["close"].rolling(20).mean()
-            px["MA50"] = px["close"].rolling(50).mean()
-            st.line_chart(px.tail(180), color=["#1a1f2e", "#16a34a", "#f59e0b"])
+    st.markdown(
+        clean_html("""
+        <div class="edu-box">
+            <b>Analisis Pergerakan Harga:</b> Pantau posisi harga terhadap Moving Average (MA20 untuk tren pendek, MA50 untuk tren menengah).
+            Saham yang bertengger di atas MA20 & MA50 memiliki probabilitas kenaikan swing yang jauh lebih sehat.
+        </div>
+        """),
+        unsafe_allow_html=True,
+    )
 
+    available_tickers = sorted(signals_df["ticker"].unique()) if not signals_df.empty else []
+    if available_tickers:
+        sel_col1, sel_col2 = st.columns([1, 3])
+        with sel_col1:
+            picked_ticker = st.selectbox("Pilih Saham", available_tickers, key="chart_ticker_select")
+            days_range = st.select_slider("Rentang Hari", options=[60, 90, 180, 365], value=180)
+
+        px_df = q("SELECT date, close FROM prices WHERE ticker = ? ORDER BY date", (picked_ticker,))
+        if not px_df.empty:
+            px_df["MA20"] = px_df["close"].rolling(20).mean()
+            px_df["MA50"] = px_df["close"].rolling(50).mean()
+            chart_slice = px_df.tail(days_range).copy()
+
+            cur_price = chart_slice["close"].iloc[-1]
+            ma20_val = chart_slice["MA20"].iloc[-1]
+            ma50_val = chart_slice["MA50"].iloc[-1]
+
+            m_col1, m_col2, m_col3 = st.columns(3)
+            m_col1.metric("Harga Terakhir", rp(cur_price))
+            m_col2.metric("MA20 (Tren Pendek)", rp(ma20_val), f"{(cur_price - ma20_val)/ma20_val*100:+.1f}% vs MA20")
+            m_col3.metric("MA50 (Tren Menengah)", rp(ma50_val), f"{(cur_price - ma50_val)/ma50_val*100:+.1f}% vs MA50")
+
+            chart_melt = chart_slice.melt(id_vars=["date"], value_vars=["close", "MA20", "MA50"],
+                                          var_name="Indikator", value_name="Harga")
+
+            line_plot = (
+                alt.Chart(chart_melt)
+                .mark_line(strokeWidth=2)
+                .encode(
+                    x=alt.X("date:T", title="Tanggal", axis=alt.Axis(format="%d %b", gridColor="rgba(255,255,255,0.06)", labelColor="#94a3b8", titleColor="#cbd5e1")),
+                    y=alt.Y("Harga:Q", scale=alt.Scale(zero=False), title="Harga (Rp)", axis=alt.Axis(gridColor="rgba(255,255,255,0.06)", labelColor="#94a3b8", titleColor="#cbd5e1")),
+                    color=alt.Color(
+                        "Indikator:N",
+                        scale=alt.Scale(
+                            domain=["close", "MA20", "MA50"],
+                            range=["#f8fafc", "#10b981", "#f59e0b"],
+                        ),
+                        legend=alt.Legend(orient="top", title=None, labelColor="#cbd5e1"),
+                    ),
+                    tooltip=[alt.Tooltip("date:T", title="Tanggal"), alt.Tooltip("Harga:Q", format=",.0f")],
+                )
+                .properties(height=380, background="transparent")
+                .configure_view(strokeWidth=0)
+            )
+            st.altair_chart(line_plot, use_container_width=True, theme=None)
+
+            active_call = next((c for c in calls if c.get("ticker") == picked_ticker), None)
+            if active_call and active_call.get("entry"):
+                st.info(
+                    f"Level Kunci Rekomendasi Claude: Entry {rp(active_call.get('entry'))} · "
+                    f"Target Checkpoint {rp(active_call.get('target'))} · "
+                    f"Batas Rem Rugi {rp(active_call.get('stop'))}"
+                )
+    else:
+        st.info("Belum ada data harga saham di database.")
+
+# ------------------------------------------------------------------------------
+# TAB 5: PAPER TRADING (SIMULASI BEBAS RISIKO)
+# ------------------------------------------------------------------------------
 with t_paper:
-    st.caption("Simulasi portfolio sistem (duit bohongan) — buat lihat strategi ini cuan apa nggak.")
-    csv = DATA_DIR / "paper_open_positions.csv"
-    if csv.exists():
-        _pp = pd.read_csv(csv)
-        _pp["saham"] = _pp["ticker"].map(code)
-        _pp["untung_rugi"] = pd.to_numeric(_pp["current_ret"], errors="coerce") * 100
-        _ppc = alt.Chart(_pp).mark_bar().encode(
-            x=alt.X("untung_rugi:Q", title="untung / rugi tiap posisi (%)"),
-            y=alt.Y("saham:N", sort="-x", title=None),
-            color=alt.condition(alt.datum.untung_rugi > 0, alt.value("#16a34a"), alt.value("#dc2626")),
-            tooltip=[alt.Tooltip("saham"), alt.Tooltip("untung_rugi:Q", title="untung %", format="+.1f"),
-                     alt.Tooltip("entry:Q", title="masuk", format=",.0f")],
-        ).properties(height=380)
-        st.markdown(":material/push_pin: **Posisi paper (simulasi)** — 🟢 untung, 🔴 rugi")
-        st.altair_chart(_ppc, use_container_width=True)
-        with st.expander("📋 Lihat tabel"):
-            st.dataframe(pd.read_csv(csv), hide_index=True, use_container_width=True)
-    else:
-        st.info("Belum ada posisi paper.")
+    st.markdown(
+        clean_html("""
+        <div class="edu-box">
+            <b>Simulasi Portofolio Bebas Risiko:</b> Uji ketahanan strategi trading tanpa mempertaruhkan modal riil.
+            Gunakan paper trading untuk memastikan sistem memiliki keunggulan statistik (<i>Edge</i>) sebelum menaikkan modal.
+        </div>
+        """),
+        unsafe_allow_html=True,
+    )
 
+    paper_csv = DATA_DIR / "paper_open_positions.csv"
+    if paper_csv.exists():
+        try:
+            pp_df = pd.read_csv(paper_csv)
+            pp_df["saham"] = pp_df["ticker"].map(code)
+            pp_df["return_pct"] = pd.to_numeric(pp_df["current_ret"], errors="coerce") * 100
+
+            wins = sum(pp_df["return_pct"] > 0)
+            losses = sum(pp_df["return_pct"] <= 0)
+
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Posisi Paper Terbuka", len(pp_df))
+            c2.metric("Posisi Untung", f"{wins} saham ({(wins/len(pp_df)*100):.0f}%)")
+            c3.metric("Posisi Rugi", f"{losses} saham")
+
+            pp_chart = (
+                alt.Chart(pp_df)
+                .mark_bar(cornerRadiusTopRight=4, cornerRadiusBottomRight=4)
+                .encode(
+                    x=alt.X("return_pct:Q", title="Untung / Rugi Berjalan (%)", axis=alt.Axis(gridColor="rgba(255,255,255,0.06)", labelColor="#94a3b8", titleColor="#cbd5e1")),
+                    y=alt.Y("saham:N", sort="-x", title=None, axis=alt.Axis(labelColor="#f8fafc")),
+                    color=alt.condition(alt.datum.return_pct > 0, alt.value("#10b981"), alt.value("#f43f5e")),
+                    tooltip=[
+                        alt.Tooltip("saham", title="Saham"),
+                        alt.Tooltip("return_pct:Q", title="Return %", format="+.1f"),
+                        alt.Tooltip("entry:Q", title="Entry", format=",.0f"),
+                        alt.Tooltip("entry_date:N", title="Tgl Masuk"),
+                    ],
+                )
+                .properties(height=340, background="transparent")
+                .configure_view(strokeWidth=0)
+            )
+            st.altair_chart(pp_chart, use_container_width=True, theme=None)
+
+            with st.expander("Rincian Posisi Terbuka Paper Trading", icon=":material/table_chart:"):
+                st.dataframe(
+                    pp_df[["saham", "entry_date", "entry", "return_pct", "outcome"]],
+                    hide_index=True,
+                    use_container_width=True,
+                    column_config={
+                        "saham": "Saham",
+                        "entry_date": "Tanggal Masuk",
+                        "entry": st.column_config.NumberColumn("Harga Entry", format="Rp %.0f"),
+                        "return_pct": st.column_config.NumberColumn("Return Berjalan %", format="%+.2f"),
+                        "outcome": "Status Exit",
+                    },
+                )
+        except Exception as err:
+            st.warning(f"Gagal membaca data paper positions: {err}")
+    else:
+        st.info("Belum ada file paper open positions (data/paper_open_positions.csv).")
+
+# ------------------------------------------------------------------------------
+# TAB 6: JURNAL REAL (FASE 5: VALIDASI MODAL KECIL ~RP1,5JT)
+# ------------------------------------------------------------------------------
 with t_jurnal:
-    st.caption("Trade REAL kamu (Fase 5 · duit kecil). Bukan nasihat / eksekusi — "
-               "cuma catat & evaluasi disiplin.")
+    st.markdown(
+        clean_html("""
+        <div class="edu-box">
+            <b>Jurnal Disiplin Psikologi:</b> Pada modal kecil (~Rp1,5 juta), tujuan utama adalah melatih konsistensi eksekusi:
+            patuh pada <b>Rem Rugi</b> saat salah, dan sabar menikmati <b>Kunci Cuan</b> saat benar.
+            Catatan ini murni evaluasi mandiri — bukan eksekusi otomatis.
+        </div>
+        """),
+        unsafe_allow_html=True,
+    )
 
-    jj = q("SELECT * FROM journal")
+    # Form Pencatatan Trade
+    recom_buys = [c for c in calls if str(c.get("action", "")).startswith("BELI") and c.get("entry")]
+    with st.expander("Catat Transaksi Baru (Saham yang Sudah Dibeli di Broker)", icon=":material/add_circle:", expanded=journal_df.empty):
+        if recom_buys:
+            st.markdown("##### Pilih Langsung dari Rekomendasi Claude Hari Ini:")
+            buy_options = {
+                f"{code(c['ticker'])} — Saran: {int(c.get('lot') or 1)} lot @ {rp(c['entry'])}": c
+                for c in recom_buys
+            }
+            picked_recom = st.selectbox("Pilih Saham Rekomendasi", list(buy_options), key="j_quick_select")
+            rc = buy_options[picked_recom]
 
-    _recs = [c for c in calls
-             if str(c.get("action", "")).startswith("BELI") and c.get("entry")]
-    with st.expander("➕  Catat posisi (saham yang UDAH kamu beli di broker)", expanded=jj.empty):
-        if _recs:
-            st.markdown("**Cara gampang — pilih dari rekomendasi Claude** (stop & target otomatis):")
-            _opts = {f"{code(c['ticker'])} — saran: {int(c.get('lot') or 1)} lot @ {rp(c['entry'])}": c
-                     for c in _recs}
-            _pick = st.selectbox("Saham yang kamu beli", list(_opts), key="j_pick")
-            _rc = _opts[_pick]
-            d1, d2 = st.columns(2)
-            _bp = d1.number_input(
-                "Harga kamu beli beneran (Rp)", min_value=0.0, value=float(_rc["entry"]),
-                step=5.0, format="%.0f", key=f"j_bp_{_rc['ticker']}",
-                help="Harga yang BENERAN kamu bayar di broker. Default = saran Claude; ganti kalau beda.")
-            _bl = d2.number_input("Berapa lot", min_value=1, value=int(_rc.get("lot") or 1),
-                                  step=1, key=f"j_bl_{_rc['ticker']}")
-            st.caption(f"✓ Stop otomatis {rp(_rc.get('stop'))} · target {rp(_rc.get('target'))} "
-                       f"— dari Claude, nggak usah kamu isi.")
-            if st.button(f"Catat {code(_rc['ticker'])}  ·  {_bl:g} lot @ {rp(_bp)}",
-                         type="primary", use_container_width=True):
-                if _bp > 0 and _bl > 0:
-                    add_trade(get_connection(), _rc["ticker"], _bp, _bl,
-                              stop=_rc.get("stop"), target=_rc.get("target"),
-                              thesis=f"ikut /analisa ({_rc['action']})")
+            c_f1, c_f2 = st.columns(2)
+            actual_price = c_f1.number_input(
+                "Harga Beli Nyata di Broker (Rp)",
+                min_value=0.0,
+                value=float(rc["entry"]),
+                step=5.0,
+                format="%.0f",
+                key=f"act_px_{rc['ticker']}",
+                help="Harga nyata yang Anda dapatkan saat order dieksekusi di broker.",
+            )
+            actual_lots = c_f2.number_input(
+                "Jumlah Lot yang Dibeli",
+                min_value=1,
+                value=int(rc.get("lot") or 1),
+                step=1,
+                key=f"act_lot_{rc['ticker']}",
+            )
+
+            st.caption(f"Stop awal {rp(rc.get('stop'))} · Target checkpoint {rp(rc.get('target'))} otomatis dihubungkan dari Claude.")
+
+            if st.button(f"Simpan {code(rc['ticker'])} ({actual_lots} lot @ {rp(actual_price)}) ke Jurnal", icon=":material/check:", type="primary", use_container_width=True):
+                if actual_price > 0 and actual_lots > 0:
+                    add_trade(
+                        get_connection(),
+                        rc["ticker"],
+                        actual_price,
+                        actual_lots,
+                        stop=rc.get("stop"),
+                        target=rc.get("target"),
+                        thesis=f"Ikut rekomendasi Claude ({rc['action']})",
+                    )
                     st.cache_data.clear()
                     st.rerun()
                 else:
-                    st.warning("Isi harga beli & lot dulu.")
+                    st.warning("Masukkan harga beli dan jumlah lot yang valid.")
             st.divider()
-        with st.form("j_add_manual", clear_on_submit=True):
-            st.caption("Atau isi MANUAL (buat saham di luar rekomendasi):")
-            a1, a2, a3 = st.columns(3)
-            f_tk = a1.text_input("Kode saham", placeholder="mis. BBRI")
-            f_price = a2.number_input("Harga beli (Rp)", min_value=0.0, step=5.0, format="%.0f")
-            f_lot = a3.number_input("Berapa lot", min_value=0.0, step=1.0, value=1.0, format="%.0f")
-            a4, a5 = st.columns(2)
-            f_stop = a4.number_input("Batas rugi / stop (boleh kosong)", min_value=0.0, step=5.0, format="%.0f")
-            f_tgt = a5.number_input("Target (boleh kosong)", min_value=0.0, step=5.0, format="%.0f")
-            f_note = st.text_input("Catatan (boleh kosong)", placeholder="mis. ikut /analisa")
-            if st.form_submit_button("Catat manual", use_container_width=True):
-                if f_tk.strip() and f_price > 0 and f_lot > 0:
-                    add_trade(get_connection(), f_tk, f_price, f_lot,
-                              stop=f_stop or None, target=f_tgt or None, thesis=f_note or None)
+
+        with st.form("manual_journal_form", clear_on_submit=True):
+            st.markdown("##### Atau Catat Manual (Di luar rekomendasi Claude):")
+            m1, m2, m3 = st.columns(3)
+            f_code = m1.text_input("Kode Saham (mis. BBRI)")
+            f_entry = m2.number_input("Harga Beli (Rp)", min_value=0.0, step=5.0, format="%.0f")
+            f_lot = m3.number_input("Berapa Lot", min_value=1, value=1, step=1)
+
+            m4, m5, m6 = st.columns(3)
+            f_stop = m4.number_input("Batas Rem Rugi (Rp)", min_value=0.0, step=5.0, format="%.0f")
+            f_target = m5.number_input("Target Checkpoint (Rp)", min_value=0.0, step=5.0, format="%.0f")
+            f_thesis = m6.text_input("Alasan Beli (Tesis)")
+
+            if st.form_submit_button("Simpan Transaksi Manual", icon=":material/save:", use_container_width=True):
+                if f_code.strip() and f_entry > 0 and f_lot > 0:
+                    add_trade(
+                        get_connection(),
+                        f_code,
+                        f_entry,
+                        f_lot,
+                        stop=f_stop or None,
+                        target=f_target or None,
+                        thesis=f_thesis or "Trade manual",
+                    )
                     st.cache_data.clear()
                     st.rerun()
                 else:
-                    st.warning("Minimal isi: Kode saham, Harga beli, Lot.")
+                    st.warning("Mohon lengkapi kode saham, harga beli, dan lot.")
 
-    st.caption("💡 Bingung berapa lot? Nggak usah ngitung manual — ketik "
-               "`/analisa modal 1500000` di Claude Code, tiap rekomendasi BELI langsung "
-               "dikasih jumlah lot-nya.")
-
-    if jj.empty:
-        st.info("Jurnal masih kosong — catat trade pertama lewat form di atas. 👆")
+    # Tampilan Portofolio & Posisi Terbuka
+    if journal_df.empty:
+        st.info("Jurnal transaksi Anda masih kosong. Mulai catat posisi pertama Anda di atas!")
     else:
-        lastpx = q("SELECT ticker, close FROM prices WHERE (ticker, date) IN "
-                   "(SELECT ticker, MAX(date) FROM prices GROUP BY ticker)")
-        pxmap = dict(zip(lastpx["ticker"], lastpx["close"]))
-        sigmap = dict(zip(sig["ticker"], sig["action"])) if not sig.empty else {}
-        recs = jj.to_dict("records")
-        s = jsummary(recs, pxmap)
+        open_trades = [r for r in journal_records if r["status"] == "open"]
+        closed_trades = [r for r in journal_records if r["status"] == "closed"]
 
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Realized", rp(s["realized"]))
-        m2.metric("Open P/L", rp(s["unreal"]))
-        m3.metric("Total", rp(s["total"]), f"{s['closed']} closed · win {s['win_rate']*100:.0f}%")
+        if open_trades:
+            st.markdown(
+                clean_html("""
+                <div style="font-size:1.15rem;font-weight:800;color:#f8fafc;margin:1.4rem 0 0.8rem 0;">
+                    Posisi Terbuka Anda (Visualisasi Rem Rugi vs Kunci Cuan)
+                </div>
+                """),
+                unsafe_allow_html=True,
+            )
 
-        cfg = {
-            "entry": st.column_config.NumberColumn("entry", format="Rp %.0f"),
-            "sekarang": st.column_config.NumberColumn("sekarang", format="Rp %.0f"),
-            "keluar": st.column_config.NumberColumn("keluar", format="Rp %.0f"),
-            "return %": st.column_config.NumberColumn("return %", format="%.2f"),
-            "P/L": st.column_config.NumberColumn("P/L", format="Rp %.0f"),
-            "stop": st.column_config.NumberColumn("stop awal", format="Rp %.0f"),
-            "trail": st.column_config.NumberColumn("trail stop", format="Rp %.0f"),
-        }
-        opn = [r for r in recs if r["status"] == "open"]
-        cld = [r for r in recs if r["status"] == "closed"]
-        if opn:
-            st.markdown(":material/push_pin: **Posisi kamu** — bar HIJAU = untung, MERAH = rugi "
-                        "(dari HARGA; fee kepotong pas jual beneran). Titik makin ke KIRI "
-                        "(dekat garis merah) = makin deket harus **jual**.")
-            posmap = {p["ticker"]: p for p in ana.get("positions", [])}
-            _cards = ['<div style="display:flex;flex-direction:column;gap:.6rem;">']
-            for r in opn:
-                cur = pxmap.get(r["ticker"])
-                p = jpl(r, cur)
-                tr = trailing_stop_level(get_connection(), r["ticker"],
-                                         r["entry_date"], r["stop"])["trail"]
-                _cards.append(_poscard(code(r["ticker"]), r["lot"], r["entry"], cur, tr,
-                                       p["gross_pct"], p["pl_rp"], sigmap.get(r["ticker"], "-"),
-                                       verdict=posmap.get(r["ticker"])))
-            _cards.append("</div>")
-            st.markdown("".join(_cards), unsafe_allow_html=True)
-            with st.expander("✔  Tutup posisi"):
-                opts = {f"#{r['id']} · {code(r['ticker'])} @ {rp(r['entry'])}": r["id"]
-                        for r in opn}
-                pick = st.selectbox("Pilih posisi", list(opts), key="j_close_pick")
-                x1, x2 = st.columns([2, 1])
-                x_price = x1.number_input("Harga keluar", min_value=0.0, step=5.0,
-                                          format="%.0f", key="j_close_price")
-                if x2.button("Tutup", use_container_width=True, type="primary"):
-                    if x_price > 0:
-                        close_trade(get_connection(), opts[pick], x_price)
+            with st.expander("Cara baca bar ini — Rem Rugi (Stop Loss) vs Kunci Cuan (Trailing Lock)"):
+                st.markdown(
+                    clean_html("""
+                    <div style='font-size:0.83rem;color:#cbd5e1;line-height:1.65;'>
+                    <b style='color:#fcd34d;'>REM RUGI (Stop Loss)</b> — garis jual masih di <b>bawah modal</b>. Fungsinya membatasi kerugian: kalau harga jatuh dan kena garis jual, rugi Anda mentok di angka itu, tidak makin dalam.<br>
+                    <b style='color:#6ee7b7;'>KUNCI CUAN (Trailing Lock)</b> — begitu harga naik melampaui modal, garis jual ikut naik ke <b>atas modal</b>. Sekarang meski kena garis jual, Anda <b>tetap untung</b>. Biarkan pemenang lari, jangan buru-buru jual.
+                    </div>
+                    """),
+                    unsafe_allow_html=True,
+                )
+
+            positions_map = {p["ticker"]: p for p in analysis.get("positions", [])}
+
+            for tr in open_trades:
+                c_px = px_map.get(tr["ticker"])
+                p_info = jpl(tr, c_px)
+                trail_info = trailing_stop_level(get_connection(), tr["ticker"], tr["entry_date"], tr["stop"])
+                tr_level = trail_info["trail"]
+
+                try:
+                    days_held = (datetime.now() - datetime.strptime(str(tr["entry_date"])[:10], "%Y-%m-%d")).days
+                except Exception:
+                    days_held = None
+
+                # Logic visual bar
+                entry_val = float(tr["entry"])
+                cur_val = float(c_px) if c_px else entry_val
+                trail_val = float(tr_level) if tr_level else entry_val * 0.95
+
+                lo = min(trail_val, entry_val * 0.92)
+                hi = max(cur_val, entry_val) + max(cur_val - trail_val, cur_val * 0.03) * 0.3
+                span = (hi - lo) or 1.0
+
+                def clamp(pct):
+                    return max(2.0, min(98.0, pct))
+
+                ent_pct = clamp((entry_val - lo) / span * 100)
+                cur_pct = clamp((cur_val - lo) / span * 100)
+                trail_pct = clamp((trail_val - lo) / span * 100)
+
+                fill_color = "#10b981" if cur_val >= entry_val else "#f43f5e"
+                bar_left = min(ent_pct, cur_pct)
+                bar_width = max(ent_pct, cur_pct) - bar_left
+
+                cushion = cur_val - trail_val
+                if cur_val < trail_val:
+                    stat_text = "<span class='badge-pill danger'><span class='dot dot-avoid'></span> JUAL — Menembus batas trailing stop</span>"
+                elif cushion / cur_val < 0.03:
+                    stat_text = f"<span class='badge-pill warning'><span class='dot dot-caution'></span> WASPADA — Tinggal {rp(cushion)} ({cushion/cur_val*100:.1f}%) di atas garis jual</span>"
+                else:
+                    stat_text = f"<span class='badge-pill success'><span class='dot dot-buy'></span> AMAN — {rp(cushion)} ({cushion/cur_val*100:.1f}%) di atas garis jual</span>"
+
+                locked = trail_val >= entry_val
+                sell_pct = (trail_val - entry_val) / entry_val * 100 if entry_val else 0.0
+
+                if locked:
+                    mode_box = (
+                        f"<div class='pos-mode locked'><b>KUNCI CUAN AKTIF</b> · garis jual di atas modal — "
+                        f"kena garis sekarang pun Anda tetap untung {sell_pct:+.1f}%. Biarkan lari.</div>"
+                    )
+                else:
+                    mode_box = (
+                        f"<div class='pos-mode risk'><b>REM RUGI AKTIF</b> · garis jual di bawah modal — "
+                        f"rugi dibatasi maksimal {sell_pct:+.1f}%. Naik terus otomatis jadi Kunci Cuan.</div>"
+                    )
+
+                ret_val = p_info["gross_pct"]
+                ret_str = f"{ret_val*100:+.2f}%" if ret_val is not None else "—"
+                ret_color = "#34d399" if (ret_val is not None and ret_val >= 0) else "#fb7185"
+                trail_badge = f"<b style='color:{'#34d399' if locked else '#fb7185'};'>({sell_pct:+.1f}% dr modal)</b>"
+
+                verdict_data = positions_map.get(tr["ticker"])
+                verdict_html = ""
+                if verdict_data and verdict_data.get("verdict"):
+                    vc = {"JUAL": "#fb7185", "WASPADA": "#fbbf24", "TAHAN": "#34d399"}.get(verdict_data["verdict"], "#94a3b8")
+                    verdict_html = (
+                        f"<div style='margin-top:0.5rem;padding-top:0.5rem;border-top:1px dashed rgba(255,255,255,0.1);font-size:0.82rem;color:#cbd5e1;'>"
+                        f"<b>Keputusan Claude: <span style='color:{vc};'>{verdict_data['verdict']}</span></b> — {verdict_data.get('reason', '')}</div>"
+                    )
+
+                bar_card_html = clean_html(f"""
+                <div class="pos-bar-wrapper">
+                    <div style="display:flex;justify-content:space-between;align-items:baseline;">
+                        <div>
+                            <span style="font-size:1.18rem;font-weight:800;color:#f8fafc;">{code(tr['ticker'])}</span>
+                            <span style="font-size:0.76rem;color:#94a3b8;margin-left:0.4rem;">{tr['lot']:g} lot · {days_held or '—'} hari dipegang · sinyal {sig_map.get(tr['ticker'], '—')}</span>
+                        </div>
+                        <div style="font-size:1.25rem;font-weight:800;color:{ret_color};font-family:JetBrains Mono,monospace;">{ret_str}</div>
+                    </div>
+                    <div class="pos-track">
+                        <div class="pos-fill" style="left:{bar_left}%; width:{bar_width}%; background:{fill_color};"></div>
+                        <div class="pos-stop-line" style="left:{trail_pct}%;"></div>
+                        <div class="pos-entry-line" style="left:{ent_pct}%;"></div>
+                        <div class="pos-cur-dot" style="left:{cur_pct}%; background:{fill_color};"></div>
+                    </div>
+                    <div class="pos-scale">
+                        <span style="color:#fb7185;font-weight:700;">Garis Jual {rp(trail_val)} {trail_badge}</span>
+                        <span>Modal {rp(entry_val)}</span>
+                        <span style="color:#f8fafc;font-weight:700;">Harga Saat Ini {rp(cur_val)}</span>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.5rem;">
+                        <div>{stat_text}</div>
+                        <div style="font-size:0.86rem;font-weight:800;color:#f8fafc;font-family:JetBrains Mono,monospace;">P/L: {rp(p_info['pl_rp'])}</div>
+                    </div>
+                    {mode_box}
+                    {verdict_html}
+                </div>
+                """)
+
+                st.markdown(bar_card_html, unsafe_allow_html=True)
+
+            # Tutup Posisi Workflow
+            with st.expander("Tutup Posisi (Realisasi Trade)", icon=":material/done_all:"):
+                trade_opts = {
+                    f"#{t['id']} · {code(t['ticker'])} (Beli @ {rp(t['entry'])}, {t['lot']:g} lot)": t["id"]
+                    for t in open_trades
+                }
+                picked_close = st.selectbox("Pilih Posisi yang Sudah Anda Jual di Broker:", list(trade_opts))
+                close_id = trade_opts[picked_close]
+
+                cl_c1, cl_c2 = st.columns([2, 1])
+                exit_price = cl_c1.number_input("Harga Jual Nyata di Broker (Rp)", min_value=0.0, step=5.0, format="%.0f", key="exit_px_in")
+                if cl_c2.button("Tutup & Simpan Hasil Trade", icon=":material/check:", type="primary", use_container_width=True):
+                    if exit_price > 0:
+                        close_trade(get_connection(), close_id, exit_price)
+                        st.success(f"Posisi berhasil ditutup pada {rp(exit_price)}.")
                         st.cache_data.clear()
                         st.rerun()
                     else:
-                        st.warning("Isi harga keluar dulu.")
-        if cld:
-            st.markdown(":material/check_circle: **Sudah ditutup**")
-            crows = []
-            for r in cld:
-                p = jpl(r, None)
-                crows.append({
-                    "saham": code(r["ticker"]), "lot": r["lot"], "entry": r["entry"],
-                    "keluar": p["px"],
-                    "return %": (p["gross_pct"] * 100 if p["gross_pct"] is not None else None),
-                    "P/L": p["pl_rp"]})
-            st.dataframe(pd.DataFrame(crows), hide_index=True,
-                         use_container_width=True, column_config=cfg)
+                        st.warning("Mohon masukkan harga jual.")
+
+        if closed_trades:
+            st.markdown("---")
+            st.markdown("##### Histori Trade Tertutup (Evaluasi Hasil & Disiplin)")
+            closed_rows = []
+            for ct in closed_trades:
+                p_close = jpl(ct, None)
+                closed_rows.append({
+                    "Saham": code(ct["ticker"]),
+                    "Lot": ct["lot"],
+                    "Harga Masuk": ct["entry"],
+                    "Harga Keluar": p_close["px"],
+                    "Return %": (p_close["gross_pct"] * 100 if p_close["gross_pct"] is not None else None),
+                    "Realisasi P/L": p_close["pl_rp"],
+                    "Tgl Masuk": ct["entry_date"],
+                    "Tgl Keluar": ct.get("exit_date", "—"),
+                })
+            st.dataframe(
+                pd.DataFrame(closed_rows),
+                hide_index=True,
+                use_container_width=True,
+                column_config={
+                    "Harga Masuk": st.column_config.NumberColumn("Harga Masuk", format="Rp %.0f"),
+                    "Harga Keluar": st.column_config.NumberColumn("Harga Keluar", format="Rp %.0f"),
+                    "Return %": st.column_config.NumberColumn("Return %", format="%+.2f"),
+                    "Realisasi P/L": st.column_config.NumberColumn("Realisasi P/L", format="Rp %.0f"),
+                },
+            )
