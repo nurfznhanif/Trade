@@ -42,18 +42,18 @@ python scripts/daily.py           # otomatis juga bikin data/brief_latest.md
 streamlit run dashboard.py        # -> http://localhost:8501
 ```
 
-**Otomatis tiap pagi:** [`run_daily.bat`](run_daily.bat) sudah terpasang di Windows Task
-Scheduler (task `TradeDailyBrief`, Sen–Jum 08:00) — langkah 1 jalan sendiri, log ke
-`data/daily_log.txt`. Langkah 2 (`/analisa`) tetap manual *by design*: buat duit beneran,
-sesi Claude yang baca artikel & mutusin tiap pagi itu **fitur**, bukan kekurangan.
+**Nggak pakai scheduler — `/analisa` yang jamin data fresh:** tiap kamu ketik `/analisa`, Claude
+ngecek tanggal data dulu; kalau basi (lebih tua dari hari bursa terakhir) dia **otomatis narik
+data baru** (`scripts/daily.py`) sebelum mutusin. Jadi satu perintah = data fresh + keputusan —
+tanpa task yang bisa mati di tengah jalan atau laptop kebangun sendiri jam 8 pagi. (Masih bisa
+`python scripts/daily.py` manual kapan aja kalau mau.)
 
 ## Ritme operasional (cheatsheet)
 
 Sistem udah kelar (Fase 0–5). Sekarang tinggal **dipakai** — low-maintenance.
 
 **Tiap pagi hari bursa:**
-- [ ] Data ketarik SENDIRI jam 08:00 (Task Scheduler `TradeDailyBrief`) — nggak usah ngapa-ngapain
-- [ ] Buka Claude Code → ketik **`/analisa`** (Claude baca data + artikel asli → update keputusan)
+- [ ] Buka Claude Code → ketik **`/analisa`** — kalau data basi, Claude **auto-refresh** dulu (`daily.py`), baru baca artikel asli & update keputusan. Nggak usah tarik data manual.
 - [ ] `streamlit run dashboard.py` → lihat **Keputusan Claude**
 - [ ] Kalau trading: eksekusi di **broker sendiri**, lalu catat di tab **Jurnal**
 

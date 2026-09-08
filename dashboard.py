@@ -417,11 +417,11 @@ def parse_claude_reason(text: str) -> tuple[str, str | None]:
 
 
 def get_pipeline_status() -> dict:
-    """Cek status orkestrasi harian (daily.py jam 08:00 pagi)."""
+    """Cek kesegaran data harian (di-refresh /analisa pas dipakai, bukan scheduler)."""
     status = {
         "ok": False,
-        "label": "Pipeline 08:00: Belum Sync Hari Ini",
-        "detail": "Jalankan refresh data harian",
+        "label": "Data: Belum Sync Hari Ini",
+        "detail": "Ketik /analisa — auto-refresh kalau basi",
         "class": "warning",
         "timestamp": None,
     }
@@ -444,12 +444,12 @@ def get_pipeline_status() -> dict:
             status["timestamp"] = time_display
             if asof_date == today_str:
                 status["ok"] = True
-                status["label"] = "Pipeline 08:00 WIB: Berhasil & Segar"
+                status["label"] = "Data: Segar Hari Ini"
                 status["detail"] = f"Data mutakhir {time_display}"
                 status["class"] = "success"
             else:
                 status["label"] = f"Data Terakhir: {asof_date}"
-                status["detail"] = f"Update terakhir {time_display} (Hari ini belum sync)"
+                status["detail"] = f"Update terakhir {time_display} · ketik /analisa buat refresh"
                 status["class"] = "warning"
     except Exception:
         pass

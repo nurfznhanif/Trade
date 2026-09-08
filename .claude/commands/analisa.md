@@ -18,10 +18,13 @@ Argumen `$ARGUMENTS`:
 
 ## Langkah
 
-**1. Baca data folder (sari pati).**
-- Baca `data/brief_latest.md` (output pipeline: teknikal + fundamental + headline per kandidat).
-  Catat baris "data per ...". Kalau tanggalnya lebih tua dari hari bursa terakhir → kasih tahu
-  user datanya basi & saranin jalanin `.venv/Scripts/python.exe scripts/daily.py` dulu.
+**1. Baca data — AUTO-REFRESH kalau basi (NGGAK ada scheduler; /analisa yang jamin data fresh).**
+- Cek kesegaran dulu — bandingin tanggal data DB sama hari bursa terakhir:
+  `.venv/Scripts/python.exe -c "import sqlite3;print(sqlite3.connect('data/trade.db').execute('SELECT MAX(date) FROM prices').fetchone()[0])"`
+- **Kalau data lebih tua dari hari bursa terakhir → JALANIN SENDIRI refresh-nya** (jangan cuma
+  nyaranin): `.venv/Scripts/python.exe scripts/daily.py` (tarik harga+berita+sinyal+brief, ~5 menit;
+  jalanin background & TUNGGU kelar). Kabarin user lagi nge-refresh. Kalau udah fresh, skip.
+- Baca `data/brief_latest.md` (teknikal + fundamental + headline per kandidat). Catat baris "data per ...".
 - Tarik headline + info tambahan kandidat teratas dari DB:
   ```
   .venv/Scripts/python.exe -c "import sqlite3;from datetime import datetime,timedelta,timezone;c=sqlite3.connect('data/trade.db');c.row_factory=sqlite3.Row;top=[r['ticker'] for r in c.execute('SELECT ticker FROM signals ORDER BY score DESC LIMIT 12')];s=(datetime.now(timezone.utc)-timedelta(days=12)).isoformat();[print('\n###',t) or [print(' [',(x['published'] or '')[:10],']',x['title']) for x in c.execute('SELECT published,title FROM news WHERE ticker=? AND title IS NOT NULL AND (published IS NULL OR published>=?) ORDER BY published DESC LIMIT 8',(t,s))] for t in top]"
