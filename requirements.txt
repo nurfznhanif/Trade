@@ -12,6 +12,10 @@ googlenewsdecoder>=0.1.7  # decode shell Google News -> URL media asli
 trafilatura>=2.2.0      # sabut teks bersih dari halaman berita (lokal, no API)
 ddgs>=9.0               # cadangan cari URL via DuckDuckGo (keyless)
 
+# Backend API buat app mobile (backend/api.py)
+fastapi>=0.110          # REST API
+uvicorn[standard]>=0.29 # ASGI server
+
 # (Eksperimental) scorer 'indobert' butuh torch+transformers (~GB). TAPI hasil tes Agu 2026:
 # model NLP Indonesia yang ada masih KALAH dari lexicon buat judul saham (sentimen finansial
 # != sentimen linguistik), jadi TIDAK dipakai default & sengaja tidak masuk requirement.
