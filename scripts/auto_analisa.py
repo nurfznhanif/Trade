@@ -1,20 +1,22 @@
 """auto_analisa.py — versi KODE dari /analisa.
 
-Kumpulin data + berita dari DB, panggil Gemini (free tier) buat judgment
-(BELI/HINDARI + alasan yang WAJIB baca isi berita, bukan judul), lalu tulis
-JSON dengan skema yang sama dipakai dashboard/app.
+Kumpulin data + BADAN artikel (trade/newsbody.py, lokal tanpa API), panggil LLM
+(BONGKAR-PASANG lewat trade/llm.py: Gemini/DeepSeek/OpenAI/Groq/OpenRouter/Ollama)
+buat judgment BELI/HINDARI + alasan yang WAJIB baca isi berita, lalu tulis JSON
+skema sama yang dipakai dashboard/app.
 
-Ini yang nanti dipanggil TOMBOL di app mobile (lewat backend) — gantiin
-kerjaan manual /analisa di Claude Code.
+Ini yang nanti dipanggil TOMBOL di app mobile (lewat backend).
 
 Contoh:
-  .venv/Scripts/python.exe scripts/auto_analisa.py                     # analisa penuh
-  .venv/Scripts/python.exe scripts/auto_analisa.py --modal 100jt       # + sizing lot
-  .venv/Scripts/python.exe scripts/auto_analisa.py --list-models       # model apa yg bisa dipakai key ini
-  .venv/Scripts/python.exe scripts/auto_analisa.py --refresh           # tarik data baru dulu (daily.py)
-  .venv/Scripts/python.exe scripts/auto_analisa.py --out data/analysis_gemini.json
+  .venv/Scripts/python.exe scripts/auto_analisa.py                        # analisa penuh
+  .venv/Scripts/python.exe scripts/auto_analisa.py --modal 100jt          # + sizing lot
+  .venv/Scripts/python.exe scripts/auto_analisa.py --list-models          # daftar model provider aktif
+  .venv/Scripts/python.exe scripts/auto_analisa.py --test                 # tes koneksi LLM aktif
+  .venv/Scripts/python.exe scripts/auto_analisa.py --provider deepseek --model deepseek-chat
+  .venv/Scripts/python.exe scripts/auto_analisa.py --refresh              # tarik data baru dulu (daily.py)
 
-Key Gemini dibaca dari env GEMINI_API_KEY (atau file .env). JANGAN hardcode.
+Provider + key diatur di .env (LLM_PROVIDER / LLM_MODEL / LLM_API_KEY / LLM_BASE_URL)
+atau lewat menu "Pengaturan LLM" di dashboard. JANGAN hardcode key.
 """
 from __future__ import annotations
 
@@ -129,42 +131,8 @@ def positions_block(conn: sqlite3.Connection) -> str:
     return "\n".join(out)
 
 
-def tavily_bodies(conn: sqlite3.Connection, tickers: list[str], api_key: str, per: int = 2) -> str:
-    """Baca ISI artikel via Tavily (search API yang balikin teks bersih).
-
-    Ini yang bikin model bisa cross-check JUDUL vs BADAN (endus clickbait).
-    Kalau gagal per-ticker, di-skip diam-diam (model tetap jalan dgn headline)."""
-    conn.row_factory = sqlite3.Row
-    names = {r["ticker"]: r["name"] for r in conn.execute("SELECT ticker,name FROM instruments")}
-    out = ["## BADAN ARTIKEL (isi berita via Tavily) — WAJIB dipakai cross-check judul vs isi"]
-    got = 0
-    for t in tickers:
-        short = t.replace(".JK", "")
-        q = f"{names.get(t, short)} {short} saham berita terbaru laba target akuisisi rights issue 2026"
-        try:
-            r = requests.post("https://api.tavily.com/search", timeout=40, json={
-                "api_key": api_key, "query": q, "max_results": per,
-                "include_raw_content": True, "search_depth": "basic"})
-            if r.status_code != 200:
-                continue
-            res = r.json().get("results", [])
-        except Exception:
-            continue
-        if not res:
-            continue
-        out.append(f"### {t}")
-        for a in res:
-            body = re.sub(r"\s+", " ", (a.get("raw_content") or a.get("content") or ""))[:1400]
-            out.append(f"  [{(a.get('url') or '')[:70]}] {a.get('title','')}")
-            out.append(f"  ISI: {body}")
-        got += 1
-    print(f"  Tavily: baca isi {got}/{len(tickers)} saham")
-    return "\n".join(out) if got else ""
-
-
 def gather_context(conn: sqlite3.Connection) -> tuple[str, str]:
     """Balikin (blok_konteks, tanggal_data). Backbone = brief_latest.md."""
-    import os
     brief = BRIEF.read_text(encoding="utf-8") if BRIEF.exists() else "(brief tidak ada)"
     data_date = conn.execute("SELECT MAX(date) FROM prices").fetchone()[0]
     top20 = [r[0] for r in conn.execute(
@@ -172,13 +140,9 @@ def gather_context(conn: sqlite3.Connection) -> tuple[str, str]:
     from trade.msci import msci_status
     msci = msci_status(date.today())["note"]
 
-    # baca badan artikel kalau ada Tavily key (top-12 kandidat = yg paling perlu diverifikasi)
-    body_block = ""
-    tav = os.environ.get("TAVILY_API_KEY")
-    if tav:
-        body_block = tavily_bodies(conn, top20[:12], tav)
-    else:
-        print("  (TAVILY_API_KEY kosong — analisa dari headline saja, tanpa baca badan)")
+    # baca badan artikel LOKAL (decode Google News + trafilatura, TANPA API) — top-12 kandidat
+    from trade.newsbody import bodies_for
+    body_block = bodies_for(conn, top20[:12])
 
     parts = [
         f"DATA per: {data_date} | Hari ini: {date.today().isoformat()}",
@@ -258,54 +222,6 @@ def build_prompt(context: str, modal: int | None) -> str:
     return f"{RULES}\n{SCHEMA_HINT}{modal_note}\n\n=== DATA ===\n{context}\n\n=== OUTPUT: JSON saja ==="
 
 
-# ---------------------------------------------------------------- Gemini REST
-def list_models(api_key: str) -> None:
-    r = requests.get(f"{API_ROOT}/models?key={api_key}", timeout=30)
-    r.raise_for_status()
-    print("Model yang bisa generateContent buat key ini:")
-    for m in r.json().get("models", []):
-        if "generateContent" in m.get("supportedGenerationMethods", []):
-            print("  -", m["name"].replace("models/", ""))
-
-
-def call_gemini(prompt: str, model: str, api_key: str, grounding: bool = True, _tries: int = 0) -> str:
-    import time
-    url = f"{API_ROOT}/models/{model}:generateContent?key={api_key}"
-    body: dict = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0.25,
-            "maxOutputTokens": 16384,          # gede: 18+ call, + sisa buat 'thinking' Gemini 3.x
-            "thinkingConfig": {"thinkingBudget": 0},  # matiin thinking (hemat budget + cepet)
-        },
-    }
-    if grounding:
-        body["tools"] = [{"google_search": {}}]
-    else:
-        body["generationConfig"]["responseMimeType"] = "application/json"
-
-    r = requests.post(url, json=body, timeout=180)
-    if r.status_code != 200:
-        # grounding sering kena kuota (429) di free tier -> coba tanpa grounding
-        if grounding and r.status_code in (400, 429):
-            print(f"  ! grounding gagal ({r.status_code}), coba tanpa grounding…")
-            return call_gemini(prompt, model, api_key, grounding=False)
-        # model lagi ramai (503) / error server (500) -> retry backoff
-        if r.status_code in (500, 503) and _tries < 4:
-            wait = 4 * (_tries + 1)
-            print(f"  ! {r.status_code} transient, tunggu {wait}s (retry {_tries+1}/4)…")
-            time.sleep(wait)
-            return call_gemini(prompt, model, api_key, grounding=grounding, _tries=_tries + 1)
-        raise RuntimeError(f"Gemini {r.status_code}: {r.text[:500]}")
-    data = r.json()
-    cand = (data.get("candidates") or [{}])[0]
-    parts = cand.get("content", {}).get("parts", [])
-    text = "".join(p.get("text", "") for p in parts)
-    if not text:
-        raise RuntimeError(f"Respons kosong / diblokir: {json.dumps(data)[:500]}")
-    return text
-
-
 def extract_json(text: str) -> dict:
     t = text.strip()
     if t.startswith("```"):
@@ -337,37 +253,48 @@ def apply_sizing(obj: dict, modal: int | None, risk: float) -> None:
 def main() -> None:
     load_env()
     import os
+    from trade import llm
     ap = argparse.ArgumentParser()
     ap.add_argument("--modal", help="mis. 100jt / 1500000 / 1,5juta")
     ap.add_argument("--risk", type=float, default=0.02, help="risiko per trade (default 0.02)")
     ap.add_argument("--out", default=str(BASE / "data" / "analysis_gemini.json"))
-    ap.add_argument("--model", default=os.environ.get("GEMINI_MODEL", "gemini-3.5-flash"))
-    ap.add_argument("--no-grounding", action="store_true", help="matikan Google Search (buat tes)")
+    ap.add_argument("--provider", help="override LLM_PROVIDER (gemini/deepseek/openai/groq/openrouter/ollama/custom)")
+    ap.add_argument("--model", help="override LLM_MODEL")
     ap.add_argument("--refresh", action="store_true", help="jalanin daily.py dulu")
-    ap.add_argument("--list-models", action="store_true")
+    ap.add_argument("--list-models", action="store_true", help="daftar model provider aktif")
+    ap.add_argument("--test", action="store_true", help="tes koneksi LLM aktif")
     args = ap.parse_args()
 
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        sys.exit("GEMINI_API_KEY belum di-set (cek .env).")
+    if args.provider:
+        os.environ["LLM_PROVIDER"] = args.provider
+    if args.model:
+        os.environ["LLM_MODEL"] = args.model
+    cfg = llm.resolve(os.environ)
 
     if args.list_models:
-        list_models(api_key)
+        print(f"Model buat {cfg['label']}:")
+        for m in llm.list_models(os.environ):
+            print("  -", m)
+        return
+
+    if args.test:
+        ok, msg = llm.test_connection(os.environ)
+        print(msg)
         return
 
     if args.refresh:
-        print("↻ refresh data (daily.py)…")
+        print("refresh data (daily.py)…")
         subprocess.run([sys.executable, str(BASE / "scripts" / "daily.py")], check=False)
 
     conn = sqlite3.connect(DB)
     context, data_date = gather_context(conn)
     modal = parse_modal(args.modal)
-    print(f"• data per {data_date} | model {args.model} | grounding {not args.no_grounding}"
+    print(f"• data per {data_date} | LLM {cfg['label']} / {cfg['model']}"
           + (f" | modal Rp{modal:,}" if modal else ""))
 
     prompt = build_prompt(context, modal)
-    print(f"• context ~{len(context)} char, manggil Gemini…")
-    text = call_gemini(prompt, args.model, api_key, grounding=not args.no_grounding)
+    print(f"• context ~{len(context)} char, manggil LLM…")
+    text = llm.generate(prompt, os.environ)
     obj = extract_json(text)
 
     obj.setdefault("generated", date.today().isoformat())

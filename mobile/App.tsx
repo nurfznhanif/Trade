@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { ComponentProps, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
+import { Ionicons } from "@expo/vector-icons";
 import {
   actionColor,
   Call,
@@ -30,12 +31,13 @@ const TABS: { key: Tab; label: string }[] = [
 ];
 
 type Nav = "analisa" | "jurnal" | "sinyal" | "berita" | "chart";
-const NAV_ITEMS: { key: Nav; label: string; icon: string }[] = [
-  { key: "analisa", label: "Analisa", icon: "📊" },
-  { key: "jurnal", label: "Jurnal", icon: "💼" },
-  { key: "sinyal", label: "Sinyal", icon: "📡" },
-  { key: "berita", label: "Berita", icon: "📰" },
-  { key: "chart", label: "Chart", icon: "📈" },
+type IconName = ComponentProps<typeof Ionicons>["name"];
+const NAV_ITEMS: { key: Nav; label: string; icon: IconName }[] = [
+  { key: "analisa", label: "Analisa", icon: "stats-chart" },
+  { key: "jurnal", label: "Jurnal", icon: "briefcase-outline" },
+  { key: "sinyal", label: "Sinyal", icon: "pulse" },
+  { key: "berita", label: "Berita", icon: "newspaper-outline" },
+  { key: "chart", label: "Chart", icon: "trending-up" },
 ];
 
 export default function App() {
@@ -110,7 +112,10 @@ export default function App() {
               {loading ? (
                 <ActivityIndicator color="#04110d" />
               ) : (
-                <Text style={styles.btnText}>⟳  ANALISA SEKARANG</Text>
+                <View style={styles.btnRow}>
+                  <Ionicons name="refresh" size={17} color="#04110d" />
+                  <Text style={styles.btnText}>ANALISA SEKARANG</Text>
+                </View>
               )}
             </Pressable>
             {data.modal ? (
@@ -160,13 +165,13 @@ export default function App() {
         )}
 
         {nav === "sinyal" && (
-          <Soon icon="📡" title="Sinyal Mesin" desc="Skor teknikal + sentimen per saham, urut kekuatan. Nyusul pas datanya disambungin." />
+          <Soon icon="pulse" title="Sinyal Mesin" desc="Skor teknikal + sentimen per saham, urut kekuatan. Nyusul pas datanya disambungin." />
         )}
         {nav === "berita" && (
-          <Soon icon="📰" title="Sentimen Berita" desc="Feed berita per saham + skor sentimen dari isi artikel." />
+          <Soon icon="newspaper-outline" title="Sentimen Berita" desc="Feed berita per saham + skor sentimen dari isi artikel." />
         )}
         {nav === "chart" && (
-          <Soon icon="📈" title="Chart Harga" desc="Grafik harga + MA + level entry/target/stop langsung di chart." />
+          <Soon icon="trending-up" title="Chart Harga" desc="Grafik harga + MA + level entry/target/stop langsung di chart." />
         )}
 
         <Text style={styles.footer}>
@@ -187,7 +192,7 @@ function BottomNav({ nav, setNav }: { nav: Nav; setNav: (n: Nav) => void }) {
         const active = nav === it.key;
         return (
           <Pressable key={it.key} style={styles.navBtn} onPress={() => setNav(it.key)}>
-            <Text style={[styles.navIcon, active && styles.navIconActive]}>{it.icon}</Text>
+            <Ionicons name={it.icon} size={21} color={active ? "#2dd4bf" : "#7d8792"} />
             <Text style={[styles.navLabel, active && styles.navLabelActive]}>{it.label}</Text>
           </Pressable>
         );
@@ -196,10 +201,10 @@ function BottomNav({ nav, setNav }: { nav: Nav; setNav: (n: Nav) => void }) {
   );
 }
 
-function Soon({ icon, title, desc }: { icon: string; title: string; desc: string }) {
+function Soon({ icon, title, desc }: { icon: IconName; title: string; desc: string }) {
   return (
     <View style={styles.soon}>
-      <Text style={styles.soonEm}>{icon}</Text>
+      <Ionicons name={icon} size={44} color="#56606c" />
       <Text style={styles.soonTitle}>{title}</Text>
       <Text style={styles.soonDesc}>{desc}</Text>
       <View style={styles.soonTag}>
@@ -248,9 +253,12 @@ function CallCard({ c }: { c: Call }) {
       ) : null}
 
       {c.lot ? (
-        <Text style={styles.lot}>
-          📦 {c.lot} lot{lotRp ? ` · ~Rp${fmtInt(lotRp)}` : ""}
-        </Text>
+        <View style={styles.lotRow}>
+          <Ionicons name="cube-outline" size={14} color="#2dd4bf" />
+          <Text style={styles.lot}>
+            {c.lot} lot{lotRp ? ` · ~Rp${fmtInt(lotRp)}` : ""}
+          </Text>
+        </View>
       ) : null}
 
       <Text style={styles.reason}>{c.reason}</Text>
@@ -317,6 +325,7 @@ const styles = StyleSheet.create({
   btn: { backgroundColor: "#2dd4bf", borderRadius: 14, paddingVertical: 15, alignItems: "center", marginTop: 16 },
   btnPressed: { opacity: 0.8 },
   btnText: { color: "#04110d", fontSize: 15, fontWeight: "800", letterSpacing: 1 },
+  btnRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   modalNote: { color: "#7d8792", fontSize: 12, textAlign: "center", marginTop: 8 },
 
   tiles: { flexDirection: "row", gap: 10, marginTop: 16 },
@@ -343,7 +352,8 @@ const styles = StyleSheet.create({
   levelVal: { color: "#e6edf3", fontSize: 16, fontWeight: "800", marginTop: 2 },
   levelSub: { fontSize: 11, fontWeight: "700", marginTop: 1 },
 
-  lot: { color: "#2dd4bf", fontSize: 13, fontWeight: "700", marginTop: 10 },
+  lot: { color: "#2dd4bf", fontSize: 13, fontWeight: "700" },
+  lotRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 10 },
   reason: { color: "#c2cbd4", fontSize: 13, lineHeight: 19, marginTop: 10 },
 
   sectionTitle: { color: "#7d8792", fontSize: 12, fontWeight: "800", letterSpacing: 1, marginTop: 26, marginBottom: 2 },

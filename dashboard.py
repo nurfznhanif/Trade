@@ -581,7 +581,7 @@ with st.sidebar:
     # Navigasi utama (menu sidebar) — ganti tab horizontal
     menu = st.radio(
         "Navigasi",
-        ["Beranda", "Sinyal Mesin", "Sentimen Berita", "Fundamental", "Chart Harga", "Paper Trading", "Jurnal Real"],
+        ["Beranda", "Sinyal Mesin", "Sentimen Berita", "Fundamental", "Chart Harga", "Paper Trading", "Jurnal Real", "Pengaturan LLM"],
         label_visibility="collapsed",
         key="nav_menu",
     )
@@ -1319,6 +1319,12 @@ elif menu == "Jurnal Real":
 
             positions_map = {p["ticker"]: p for p in analysis.get("positions", [])}
             hz = holding_horizon()
+            ic_target = ('<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6ee7b7" '
+                         'stroke-width="2.2" style="vertical-align:-2px;margin-right:5px"><circle cx="12" cy="12" r="10"/>'
+                         '<circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>')
+            ic_clock = ('<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+                        'stroke-width="2.2" style="vertical-align:-2px;margin-right:5px"><circle cx="12" cy="12" r="10"/>'
+                        '<polyline points="12 6 12 12 16 14"/></svg>')
 
             for tr in open_trades:
                 c_px = px_map.get(tr["ticker"])
@@ -1385,14 +1391,14 @@ elif menu == "Jurnal Real":
                     target_box = (
                         f"<div style='margin-top:0.45rem;font-size:0.8rem;color:#6ee7b7;background:rgba(16,185,129,0.12);"
                         f"border:1px solid rgba(16,185,129,0.35);border-radius:8px;padding:0.45rem 0.6rem;'>"
-                        f"🎯 <b>Checkpoint +{target_gain:.0f}% ({rp(target_val)}) SUDAH LEWAT</b> — sekarang murni "
+                        f"{ic_target}<b>Checkpoint +{target_gain:.0f}% ({rp(target_val)}) SUDAH LEWAT</b> — sekarang murni "
                         f"Kunci Cuan (trailing). Biarkan lari, jangan buru-buru jual manual.</div>"
                     )
                 else:
                     target_box = (
                         f"<div style='margin-top:0.45rem;font-size:0.8rem;color:#6ee7b7;background:rgba(16,185,129,0.08);"
                         f"border:1px solid rgba(16,185,129,0.25);border-radius:8px;padding:0.45rem 0.6rem;'>"
-                        f"🎯 <b>Target Cuan {rp(target_val)} (+{target_gain:.0f}%)</b> — checkpoint pertama (2×risiko), "
+                        f"{ic_target}<b>Target Cuan {rp(target_val)} (+{target_gain:.0f}%)</b> — checkpoint pertama (2×risiko), "
                         f"<b>BUKAN tempat jual mati</b>. Lewat sini → biarkan lari, garis jual (trailing) yang menutup.</div>"
                     )
 
@@ -1416,12 +1422,12 @@ elif menu == "Jurnal Real":
                     if dh > hz["cap"] * 1.4:
                         horizon_html = (
                             f"<div style='margin-top:0.4rem;font-size:0.76rem;color:#fbbf24;'>"
-                            f"⏳ Dipegang {dh} hari — sudah lewat batas waktu backtest (~{hz['cap']} hari bursa). Evaluasi keluar.</div>"
+                            f"{ic_clock}Dipegang {dh} hari — sudah lewat batas waktu backtest (~{hz['cap']} hari bursa). Evaluasi keluar.</div>"
                         )
                     else:
                         horizon_html = (
                             f"<div style='margin-top:0.4rem;font-size:0.76rem;color:#94a3b8;'>"
-                            f"⏳ Dipegang {dh} hari · lama-tahan khas ~{hz['median']} hari bursa (≈{round(hz['median']*1.4)} kalender): "
+                            f"{ic_clock}Dipegang {dh} hari · lama-tahan khas ~{hz['median']} hari bursa (≈{round(hz['median']*1.4)} kalender): "
                             f"winner ~{hz['win']}, loser dipangkas ~{hz['los']} — <i>backtest, bukan ramalan</i>.</div>"
                         )
 
@@ -1506,3 +1512,89 @@ elif menu == "Jurnal Real":
                     "Realisasi P/L": st.column_config.NumberColumn("Realisasi P/L", format="Rp %.0f"),
                 },
             )
+
+# ==============================================================================
+# MENU: PENGATURAN LLM (bongkar-pasang provider + API key)
+# ==============================================================================
+elif menu == "Pengaturan LLM":
+    from pathlib import Path as _P
+    from trade import llm as _llm
+
+    ENV_PATH = _P(__file__).with_name(".env")
+
+    def _read_env() -> dict:
+        d = {}
+        if ENV_PATH.exists():
+            for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
+                s = line.strip()
+                if s and not s.startswith("#") and "=" in s:
+                    k, v = s.split("=", 1)
+                    d[k.strip()] = v.strip()
+        return d
+
+    def _write_env(updates: dict) -> None:
+        lines = ENV_PATH.read_text(encoding="utf-8").splitlines() if ENV_PATH.exists() else []
+        done, out = set(), []
+        for line in lines:
+            s = line.strip()
+            if s and not s.startswith("#") and "=" in s and s.split("=", 1)[0].strip() in updates:
+                k = s.split("=", 1)[0].strip()
+                out.append(f"{k}={updates[k]}")
+                done.add(k)
+            else:
+                out.append(line)
+        for k, v in updates.items():
+            if k not in done:
+                out.append(f"{k}={v}")
+        ENV_PATH.write_text("\n".join(out) + "\n", encoding="utf-8")
+
+    st.markdown("## Pengaturan LLM — otak analisa (bongkar-pasang)")
+    st.caption("Pilih provider + tempel API key. Dipakai `scripts/auto_analisa.py`. Gak terpaku ke Gemini.")
+
+    cur = _read_env()
+    active = _llm.resolve(cur)
+    st.info(f"Aktif sekarang: **{active['label']}** · model `{active['model']}` · "
+            f"key {'terisi' if active['key'] else 'KOSONG'}")
+
+    provs = list(_llm.PROVIDERS.keys())
+    cur_prov = (cur.get("LLM_PROVIDER") or "gemini").lower()
+    cur_prov = cur_prov if cur_prov in provs else "gemini"
+    prov = st.selectbox("Provider", provs, index=provs.index(cur_prov),
+                        format_func=lambda k: _llm.PROVIDERS[k]["label"])
+    pinfo = _llm.PROVIDERS[prov]
+
+    if pinfo["key_url"] != "-":
+        st.caption(f"Ambil API key gratis/berbayar di: **{pinfo['key_url']}**")
+    else:
+        st.caption("Provider lokal — gak butuh API key.")
+
+    model = st.text_input("Model", value=(cur.get("LLM_MODEL") if cur_prov == prov else "")
+                          or (pinfo["models"][0] if pinfo["models"] else ""))
+    if pinfo["models"]:
+        st.caption("Contoh model: " + " · ".join(f"`{m}`" for m in pinfo["models"]))
+
+    key = st.text_input("API Key", value=(cur.get("LLM_API_KEY", "") if cur_prov == prov else ""),
+                        type="password", help="Gemini: kalau kosong, pakai GEMINI_API_KEY yang udah ada.")
+    base = st.text_input("Base URL (OpenAI-compatible)", value=cur.get("LLM_BASE_URL", "")) \
+        if prov == "custom" else ""
+
+    c1, c2 = st.columns(2)
+    if c1.button("Simpan", type="primary", use_container_width=True, icon=":material/save:"):
+        upd = {"LLM_PROVIDER": prov, "LLM_MODEL": model.strip(), "LLM_API_KEY": key.strip()}
+        if prov == "custom":
+            upd["LLM_BASE_URL"] = base.strip()
+        _write_env(upd)
+        st.success(f"Tersimpan ke .env — provider aktif: {pinfo['label']} / {model.strip()}")
+    if c2.button("Tes Koneksi", use_container_width=True, icon=":material/wifi_find:"):
+        env = dict(cur)
+        env.update({"LLM_PROVIDER": prov, "LLM_MODEL": model.strip(),
+                    "LLM_API_KEY": key.strip(), "LLM_BASE_URL": base.strip()})
+        if not env["LLM_API_KEY"] and prov == "gemini":
+            env["LLM_API_KEY"] = cur.get("GEMINI_API_KEY", "")
+        with st.spinner("Nyoba nyambung ke model…"):
+            ok, msg = _llm.test_connection(env)
+        (st.success if ok else st.error)(msg)
+
+    st.divider()
+    st.caption("Key disimpan di `.env` (gitignored — gak ke-commit). Badan artikel dibaca LOKAL "
+               "(`trafilatura`, tanpa API) — jadi satu-satunya API yang dibutuhkan cuma LLM ini.")

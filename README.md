@@ -120,11 +120,11 @@ kalau dijalankan `/analisa modal <angka>` (sizing otomatis). `/analisa` selalu i
 
 Biar nggak perlu buka Claude Code tiap hari, ada dua bagian baru (masih eksperimental):
 
-- **`scripts/auto_analisa.py`** — versi KODE dari `/analisa`: kumpulin data + **baca isi berita**
-  (via [Tavily](https://tavily.com), search API gratis) → **Gemini (free tier)** mutusin
-  BELI/HINDARI + alasan (skeptis clickbait) → tulis `data/analysis.json`. Otak gratis pengganti
-  Claude Code buat backend/otomatis. Key dibaca dari `.env` (**gitignored**): `GEMINI_API_KEY`,
-  `TAVILY_API_KEY`.
+- **`scripts/auto_analisa.py`** — versi KODE dari `/analisa`: kumpulin data + **baca BADAN artikel
+  LOKAL** (`trade/newsbody.py`: decode shell Google News → `trafilatura`, **tanpa API/kredit**) →
+  **Gemini (free tier)** mutusin BELI/HINDARI + alasan (skeptis clickbait) → tulis
+  `data/analysis.json`. Otak gratis pengganti Claude Code buat backend/otomatis. **Cuma 1 key**:
+  `GEMINI_API_KEY` di `.env` (**gitignored**).
   ```bash
   .venv/Scripts/python.exe scripts/auto_analisa.py --list-models    # cek model yang bisa dipakai
   .venv/Scripts/python.exe scripts/auto_analisa.py --modal 100jt     # analisa + sizing lot
@@ -150,6 +150,7 @@ trade/            package inti (market-agnostic)
   db.py           SQLite: skema + simpan
   prices.py       tarik harga (yfinance)
   news.py         tarik berita (Google News RSS)
+  newsbody.py     baca BADAN artikel (decode shell Google News + trafilatura) buat auto_analisa
   sentiment.py    skor sentimen berita
   fundamentals.py rasio + bendera merah (pagar anti-sampah)
   macro.py        regime IHSG (vs MA200) + indikator makro (kurs/komoditas/global)
