@@ -186,6 +186,16 @@ div[data-testid="stMetricLabel"] {
     background: #94a3b8;
     z-index: 2;
 }
+.pos-target-line {
+    position: absolute;
+    top: -4px;
+    bottom: -4px;
+    width: 3px;
+    background: repeating-linear-gradient(#10b981, #10b981 3px, transparent 3px, transparent 6px);
+    border-radius: 2px;
+    z-index: 2;
+    box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+}
 .pos-cur-dot {
     position: absolute;
     top: 50%;
@@ -407,6 +417,23 @@ def q(sql: str, params=None) -> pd.DataFrame:
         return pd.read_sql_query(sql, get_connection(), params=params)
     except Exception:
         return pd.DataFrame()
+
+
+@st.cache_data(ttl=3600)
+def holding_horizon() -> dict:
+    """Distribusi lama-tahan dari backtest trailing (EKSPEKTASI, bukan ramalan).
+    `bars` = hari bursa. Winner ditahan lebih lama, loser dipangkas cepat."""
+    from pathlib import Path
+    try:
+        p = Path(__file__).with_name("data") / "backtest_trades_trailing.csv"
+        df = pd.read_csv(p, usecols=["bars", "ret"])
+        b = df["bars"]
+        w = df.loc[df["ret"] > 0, "bars"]
+        l = df.loc[df["ret"] <= 0, "bars"]
+        return {"median": int(b.median()), "win": int(w.median()),
+                "los": int(l.median()), "cap": int(b.max()), "n": int(len(df))}
+    except Exception:
+        return {}
 
 
 def rp(v) -> str:
@@ -1291,6 +1318,7 @@ elif menu == "Jurnal Real":
                 )
 
             positions_map = {p["ticker"]: p for p in analysis.get("positions", [])}
+            hz = holding_horizon()
 
             for tr in open_trades:
                 c_px = px_map.get(tr["ticker"])
@@ -1308,8 +1336,15 @@ elif menu == "Jurnal Real":
                 cur_val = float(c_px) if c_px else entry_val
                 trail_val = float(tr_level) if tr_level else entry_val * 0.95
 
+                # Target Cuan = checkpoint 2R dari modal (BUKAN jual mati; exit sistem = trailing)
+                init_stop = float(tr["stop"]) if tr["stop"] else entry_val * 0.95
+                risk_per = entry_val - init_stop
+                target_val = entry_val + 2 * risk_per if risk_per > 0 else entry_val * 1.15
+                target_gain = (target_val - entry_val) / entry_val * 100 if entry_val else 0.0
+                target_reached = cur_val >= target_val
+
                 lo = min(trail_val, entry_val * 0.92)
-                hi = max(cur_val, entry_val) + max(cur_val - trail_val, cur_val * 0.03) * 0.3
+                hi = max(cur_val, entry_val, target_val) + max(cur_val - trail_val, cur_val * 0.03) * 0.3
                 span = (hi - lo) or 1.0
 
                 def clamp(pct):
@@ -1318,6 +1353,7 @@ elif menu == "Jurnal Real":
                 ent_pct = clamp((entry_val - lo) / span * 100)
                 cur_pct = clamp((cur_val - lo) / span * 100)
                 trail_pct = clamp((trail_val - lo) / span * 100)
+                target_pct = clamp((target_val - lo) / span * 100)
 
                 fill_color = "#10b981" if cur_val >= entry_val else "#f43f5e"
                 bar_left = min(ent_pct, cur_pct)
@@ -1345,6 +1381,21 @@ elif menu == "Jurnal Real":
                         f"rugi dibatasi maksimal {sell_pct:+.1f}%. Naik terus otomatis jadi Kunci Cuan.</div>"
                     )
 
+                if target_reached:
+                    target_box = (
+                        f"<div style='margin-top:0.45rem;font-size:0.8rem;color:#6ee7b7;background:rgba(16,185,129,0.12);"
+                        f"border:1px solid rgba(16,185,129,0.35);border-radius:8px;padding:0.45rem 0.6rem;'>"
+                        f"🎯 <b>Checkpoint +{target_gain:.0f}% ({rp(target_val)}) SUDAH LEWAT</b> — sekarang murni "
+                        f"Kunci Cuan (trailing). Biarkan lari, jangan buru-buru jual manual.</div>"
+                    )
+                else:
+                    target_box = (
+                        f"<div style='margin-top:0.45rem;font-size:0.8rem;color:#6ee7b7;background:rgba(16,185,129,0.08);"
+                        f"border:1px solid rgba(16,185,129,0.25);border-radius:8px;padding:0.45rem 0.6rem;'>"
+                        f"🎯 <b>Target Cuan {rp(target_val)} (+{target_gain:.0f}%)</b> — checkpoint pertama (2×risiko), "
+                        f"<b>BUKAN tempat jual mati</b>. Lewat sini → biarkan lari, garis jual (trailing) yang menutup.</div>"
+                    )
+
                 ret_val = p_info["gross_pct"]
                 ret_str = f"{ret_val*100:+.2f}%" if ret_val is not None else "—"
                 ret_color = "#34d399" if (ret_val is not None and ret_val >= 0) else "#fb7185"
@@ -1359,6 +1410,21 @@ elif menu == "Jurnal Real":
                         f"<b>Keputusan Claude: <span style='color:{vc};'>{verdict_data['verdict']}</span></b> — {verdict_data.get('reason', '')}</div>"
                     )
 
+                horizon_html = ""
+                if hz:
+                    dh = days_held if days_held is not None else 0
+                    if dh > hz["cap"] * 1.4:
+                        horizon_html = (
+                            f"<div style='margin-top:0.4rem;font-size:0.76rem;color:#fbbf24;'>"
+                            f"⏳ Dipegang {dh} hari — sudah lewat batas waktu backtest (~{hz['cap']} hari bursa). Evaluasi keluar.</div>"
+                        )
+                    else:
+                        horizon_html = (
+                            f"<div style='margin-top:0.4rem;font-size:0.76rem;color:#94a3b8;'>"
+                            f"⏳ Dipegang {dh} hari · lama-tahan khas ~{hz['median']} hari bursa (≈{round(hz['median']*1.4)} kalender): "
+                            f"winner ~{hz['win']}, loser dipangkas ~{hz['los']} — <i>backtest, bukan ramalan</i>.</div>"
+                        )
+
                 bar_card_html = clean_html(f"""
                 <div class="pos-bar-wrapper">
                     <div style="display:flex;justify-content:space-between;align-items:baseline;">
@@ -1372,6 +1438,7 @@ elif menu == "Jurnal Real":
                         <div class="pos-fill" style="left:{bar_left}%; width:{bar_width}%; background:{fill_color};"></div>
                         <div class="pos-stop-line" style="left:{trail_pct}%;"></div>
                         <div class="pos-entry-line" style="left:{ent_pct}%;"></div>
+                        <div class="pos-target-line" style="left:{target_pct}%;"></div>
                         <div class="pos-cur-dot" style="left:{cur_pct}%; background:{fill_color};"></div>
                     </div>
                     <div class="pos-scale">
@@ -1384,7 +1451,9 @@ elif menu == "Jurnal Real":
                         <div style="font-size:0.86rem;font-weight:800;color:#f8fafc;font-family:JetBrains Mono,monospace;">P/L: {rp(p_info['pl_rp'])}</div>
                     </div>
                     {mode_box}
+                    {target_box}
                     {verdict_html}
+                    {horizon_html}
                 </div>
                 """)
 

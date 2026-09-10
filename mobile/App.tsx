@@ -1,0 +1,353 @@
+import { useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { StatusBar } from "expo-status-bar";
+import {
+  actionColor,
+  Call,
+  fmtInt,
+  flagColor,
+  group,
+  pct,
+  Position,
+  rr,
+  sampleAnalysis,
+  verdictColor,
+} from "./src/analysis";
+
+type Tab = "beli" | "tunggu" | "hindari";
+const TABS: { key: Tab; label: string }[] = [
+  { key: "beli", label: "Beli" },
+  { key: "tunggu", label: "Tunggu" },
+  { key: "hindari", label: "Hindari" },
+];
+
+type Nav = "analisa" | "jurnal" | "sinyal" | "berita" | "chart";
+const NAV_ITEMS: { key: Nav; label: string; icon: string }[] = [
+  { key: "analisa", label: "Analisa", icon: "📊" },
+  { key: "jurnal", label: "Jurnal", icon: "💼" },
+  { key: "sinyal", label: "Sinyal", icon: "📡" },
+  { key: "berita", label: "Berita", icon: "📰" },
+  { key: "chart", label: "Chart", icon: "📈" },
+];
+
+export default function App() {
+  const [tab, setTab] = useState<Tab>("beli");
+  const [nav, setNav] = useState<Nav>("analisa");
+  const [loading, setLoading] = useState(false);
+  const data = sampleAnalysis; // TODO: nanti fetch dari backend
+
+  const counts = useMemo(() => {
+    const c = { beli: 0, tunggu: 0, hindari: 0 };
+    data.calls.forEach((x) => (c[group(x.action)] += 1));
+    return c;
+  }, [data]);
+
+  const shown = data.calls.filter((c) => group(c.action) === tab);
+  const regime = data.macro.toUpperCase().includes("RISK-OFF")
+    ? "RISK-OFF"
+    : data.macro.toUpperCase().includes("RISK-ON")
+    ? "RISK-ON"
+    : "NETRAL";
+
+  // rangka: tombol simulasi refresh (nanti diganti panggilan API)
+  const onAnalisa = () => {
+    setLoading(true);
+    setTimeout(() => setLoading(false), 1300);
+  };
+
+  return (
+    <SafeAreaProvider>
+      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+      <StatusBar style="light" />
+      <ScrollView style={styles.flex1} contentContainerStyle={styles.scroll}>
+        {/* Header (global) */}
+        <View style={styles.headerRow}>
+          <Text style={styles.logo}>
+            TRADE <Text style={styles.logoAccent}>IDX</Text>
+          </Text>
+          <View
+            style={[
+              styles.regimePill,
+              { borderColor: regime === "RISK-OFF" ? "#ef4444" : "#22c55e" },
+            ]}
+          >
+            <Text
+              style={[
+                styles.regimeText,
+                { color: regime === "RISK-OFF" ? "#ef4444" : "#22c55e" },
+              ]}
+            >
+              {regime}
+            </Text>
+          </View>
+        </View>
+        <Text style={styles.sub}>
+          data {data.generated} · {data.engine}
+        </Text>
+
+        {nav === "analisa" && (
+          <>
+            {/* Macro */}
+            <View style={styles.macroCard}>
+              <Text style={styles.macroLabel}>ANALISIS MAKRO</Text>
+              <Text style={styles.macroText}>{data.macro}</Text>
+            </View>
+
+            {/* Tombol Analisa */}
+            <Pressable
+              style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
+              onPress={onAnalisa}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#04110d" />
+              ) : (
+                <Text style={styles.btnText}>⟳  ANALISA SEKARANG</Text>
+              )}
+            </Pressable>
+            {data.modal ? (
+              <Text style={styles.modalNote}>
+                Sizing untuk modal Rp{fmtInt(data.modal)}
+              </Text>
+            ) : null}
+
+            {/* Stat tiles */}
+            <View style={styles.tiles}>
+              <StatTile n={counts.beli} label="BELI" color="#22c55e" />
+              <StatTile n={counts.tunggu} label="TUNGGU" color="#f59e0b" />
+              <StatTile n={counts.hindari} label="HINDARI" color="#ef4444" />
+            </View>
+
+            {/* Tabs filter */}
+            <View style={styles.tabs}>
+              {TABS.map((t) => (
+                <Pressable
+                  key={t.key}
+                  style={[styles.tab, tab === t.key && styles.tabActive]}
+                  onPress={() => setTab(t.key)}
+                >
+                  <Text style={[styles.tabText, tab === t.key && styles.tabTextActive]}>
+                    {t.label} · {counts[t.key]}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {/* Kartu call */}
+            {shown.map((c) => (
+              <CallCard key={c.ticker} c={c} />
+            ))}
+          </>
+        )}
+
+        {nav === "jurnal" && (
+          <>
+            <Text style={[styles.sectionTitle, { marginTop: 18 }]}>POSISI TERBUKA</Text>
+            {data.positions && data.positions.length > 0 ? (
+              data.positions.map((p) => <PositionCard key={p.ticker} p={p} />)
+            ) : (
+              <Text style={styles.footer}>Belum ada posisi terbuka.</Text>
+            )}
+          </>
+        )}
+
+        {nav === "sinyal" && (
+          <Soon icon="📡" title="Sinyal Mesin" desc="Skor teknikal + sentimen per saham, urut kekuatan. Nyusul pas datanya disambungin." />
+        )}
+        {nav === "berita" && (
+          <Soon icon="📰" title="Sentimen Berita" desc="Feed berita per saham + skor sentimen dari isi artikel." />
+        )}
+        {nav === "chart" && (
+          <Soon icon="📈" title="Chart Harga" desc="Grafik harga + MA + level entry/target/stop langsung di chart." />
+        )}
+
+        <Text style={styles.footer}>
+          Rangka app · data sampel (belum tersambung backend)
+        </Text>
+      </ScrollView>
+
+      <BottomNav nav={nav} setNav={setNav} />
+      </SafeAreaView>
+    </SafeAreaProvider>
+  );
+}
+
+function BottomNav({ nav, setNav }: { nav: Nav; setNav: (n: Nav) => void }) {
+  return (
+    <View style={styles.nav}>
+      {NAV_ITEMS.map((it) => {
+        const active = nav === it.key;
+        return (
+          <Pressable key={it.key} style={styles.navBtn} onPress={() => setNav(it.key)}>
+            <Text style={[styles.navIcon, active && styles.navIconActive]}>{it.icon}</Text>
+            <Text style={[styles.navLabel, active && styles.navLabelActive]}>{it.label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function Soon({ icon, title, desc }: { icon: string; title: string; desc: string }) {
+  return (
+    <View style={styles.soon}>
+      <Text style={styles.soonEm}>{icon}</Text>
+      <Text style={styles.soonTitle}>{title}</Text>
+      <Text style={styles.soonDesc}>{desc}</Text>
+      <View style={styles.soonTag}>
+        <Text style={styles.soonTagText}>SEGERA HADIR</Text>
+      </View>
+    </View>
+  );
+}
+
+function StatTile({ n, label, color }: { n: number; label: string; color: string }) {
+  return (
+    <View style={styles.tile}>
+      <Text style={[styles.tileNum, { color }]}>{n}</Text>
+      <Text style={styles.tileLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function CallCard({ c }: { c: Call }) {
+  const bar = c.flag ? flagColor[c.flag] : actionColor(c.action);
+  const toTarget = pct(c.entry, c.target);
+  const toStop = pct(c.entry, c.stop);
+  const ratio = rr(c);
+  const short = c.ticker.replace(".JK", "");
+  const lotRp = c.lot && c.entry ? c.lot * 100 * c.entry : null;
+
+  return (
+    <View style={[styles.card, { borderLeftColor: bar }]}>
+      <View style={styles.cardTop}>
+        <Text style={styles.ticker}>{short}</Text>
+        <View style={[styles.badge, { backgroundColor: actionColor(c.action) + "22", borderColor: actionColor(c.action) }]}>
+          <Text style={[styles.badgeText, { color: actionColor(c.action) }]}>{c.action}</Text>
+        </View>
+      </View>
+      {c.conviction && c.conviction !== "-" ? (
+        <Text style={styles.conviction}>Konviksi: {c.conviction}</Text>
+      ) : null}
+
+      {c.entry != null ? (
+        <View style={styles.levels}>
+          <Level label="Entry" val={fmtInt(c.entry)} />
+          <Level label="Target" val={fmtInt(c.target)} sub={toTarget ? `+${toTarget}%` : undefined} subColor="#22c55e" />
+          <Level label="Stop" val={fmtInt(c.stop)} sub={toStop ? `${toStop}%` : undefined} subColor="#ef4444" />
+          {ratio ? <Level label="R:R" val={`1:${ratio}`} /> : null}
+        </View>
+      ) : null}
+
+      {c.lot ? (
+        <Text style={styles.lot}>
+          📦 {c.lot} lot{lotRp ? ` · ~Rp${fmtInt(lotRp)}` : ""}
+        </Text>
+      ) : null}
+
+      <Text style={styles.reason}>{c.reason}</Text>
+    </View>
+  );
+}
+
+function Level({ label, val, sub, subColor }: { label: string; val: string; sub?: string; subColor?: string }) {
+  return (
+    <View style={styles.level}>
+      <Text style={styles.levelLabel}>{label}</Text>
+      <Text style={styles.levelVal}>{val}</Text>
+      {sub ? <Text style={[styles.levelSub, { color: subColor }]}>{sub}</Text> : null}
+    </View>
+  );
+}
+
+function PositionCard({ p }: { p: Position }) {
+  const col = verdictColor(p.verdict);
+  return (
+    <View style={[styles.posCard, { borderLeftColor: col }]}>
+      <View style={styles.cardTop}>
+        <Text style={styles.ticker}>{p.ticker.replace(".JK", "")}</Text>
+        <View style={[styles.badge, { backgroundColor: col + "22", borderColor: col }]}>
+          <Text style={[styles.badgeText, { color: col }]}>{p.verdict}</Text>
+        </View>
+      </View>
+      <Text style={styles.reason}>{p.reason}</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: "#0a0e13" },
+  flex1: { flex: 1 },
+  scroll: { padding: 16, paddingBottom: 32 },
+
+  // Bottom navigation (pola mobile — bukan sidebar)
+  nav: { flexDirection: "row", backgroundColor: "#0c1117", borderTopWidth: 1, borderTopColor: "#1e2731", paddingTop: 8, paddingBottom: 10 },
+  navBtn: { flex: 1, alignItems: "center", gap: 3, paddingVertical: 2 },
+  navIcon: { fontSize: 20, opacity: 0.5 },
+  navIconActive: { opacity: 1 },
+  navLabel: { color: "#7d8792", fontSize: 10, fontWeight: "700", letterSpacing: 0.3 },
+  navLabelActive: { color: "#2dd4bf" },
+
+  // Placeholder view
+  soon: { alignItems: "center", paddingVertical: 64, gap: 9 },
+  soonEm: { fontSize: 44 },
+  soonTitle: { color: "#e6edf3", fontSize: 17, fontWeight: "800" },
+  soonDesc: { color: "#7d8792", fontSize: 13, textAlign: "center", maxWidth: 250, lineHeight: 19 },
+  soonTag: { marginTop: 4, borderWidth: 1, borderColor: "#1e2731", borderRadius: 999, paddingHorizontal: 11, paddingVertical: 4 },
+  soonTagText: { color: "#56606c", fontSize: 10, fontWeight: "700", letterSpacing: 1 },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  logo: { color: "#e6edf3", fontSize: 26, fontWeight: "800", letterSpacing: 1 },
+  logoAccent: { color: "#2dd4bf" },
+  regimePill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  regimeText: { fontSize: 12, fontWeight: "800", letterSpacing: 1 },
+  sub: { color: "#7d8792", fontSize: 12, marginTop: 4 },
+
+  macroCard: { backgroundColor: "#121821", borderRadius: 14, padding: 14, marginTop: 14, borderWidth: 1, borderColor: "#1e2731" },
+  macroLabel: { color: "#2dd4bf", fontSize: 11, fontWeight: "800", letterSpacing: 1, marginBottom: 6 },
+  macroText: { color: "#c2cbd4", fontSize: 13, lineHeight: 19 },
+
+  btn: { backgroundColor: "#2dd4bf", borderRadius: 14, paddingVertical: 15, alignItems: "center", marginTop: 16 },
+  btnPressed: { opacity: 0.8 },
+  btnText: { color: "#04110d", fontSize: 15, fontWeight: "800", letterSpacing: 1 },
+  modalNote: { color: "#7d8792", fontSize: 12, textAlign: "center", marginTop: 8 },
+
+  tiles: { flexDirection: "row", gap: 10, marginTop: 16 },
+  tile: { flex: 1, backgroundColor: "#121821", borderRadius: 12, paddingVertical: 14, alignItems: "center", borderWidth: 1, borderColor: "#1e2731" },
+  tileNum: { fontSize: 24, fontWeight: "800" },
+  tileLabel: { color: "#7d8792", fontSize: 11, fontWeight: "700", letterSpacing: 1, marginTop: 2 },
+
+  tabs: { flexDirection: "row", backgroundColor: "#121821", borderRadius: 12, padding: 4, marginTop: 16, borderWidth: 1, borderColor: "#1e2731" },
+  tab: { flex: 1, paddingVertical: 9, alignItems: "center", borderRadius: 9 },
+  tabActive: { backgroundColor: "#1e2731" },
+  tabText: { color: "#7d8792", fontSize: 13, fontWeight: "700" },
+  tabTextActive: { color: "#e6edf3" },
+
+  card: { backgroundColor: "#121821", borderRadius: 14, padding: 14, marginTop: 12, borderLeftWidth: 4, borderWidth: 1, borderColor: "#1e2731" },
+  cardTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  ticker: { color: "#e6edf3", fontSize: 19, fontWeight: "800", letterSpacing: 1 },
+  badge: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  badgeText: { fontSize: 11, fontWeight: "800", letterSpacing: 0.5 },
+  conviction: { color: "#7d8792", fontSize: 12, marginTop: 3 },
+
+  levels: { flexDirection: "row", gap: 8, marginTop: 12, flexWrap: "wrap" },
+  level: { minWidth: 64 },
+  levelLabel: { color: "#7d8792", fontSize: 10, fontWeight: "700", letterSpacing: 0.5 },
+  levelVal: { color: "#e6edf3", fontSize: 16, fontWeight: "800", marginTop: 2 },
+  levelSub: { fontSize: 11, fontWeight: "700", marginTop: 1 },
+
+  lot: { color: "#2dd4bf", fontSize: 13, fontWeight: "700", marginTop: 10 },
+  reason: { color: "#c2cbd4", fontSize: 13, lineHeight: 19, marginTop: 10 },
+
+  sectionTitle: { color: "#7d8792", fontSize: 12, fontWeight: "800", letterSpacing: 1, marginTop: 26, marginBottom: 2 },
+  posCard: { backgroundColor: "#121821", borderRadius: 14, padding: 14, marginTop: 12, borderLeftWidth: 4, borderWidth: 1, borderColor: "#1e2731" },
+
+  footer: { color: "#4b5560", fontSize: 11, textAlign: "center", marginTop: 28 },
+});

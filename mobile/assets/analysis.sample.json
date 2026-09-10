@@ -1,0 +1,185 @@
+{
+  "generated": "2026-09-09",
+  "engine": "Gemini (LLM) — baca data + berita",
+  "macro": "IHSG berada dalam regime risk-off di bawah MA200 (downtrend) sehingga disarankan membatasi ukuran posisi baru. Sektor energi (minyak/emas) dan properti/kawasan industri (data center) menjadi tema panas, sementara rebalancing MSCI masih jauh di akhir November.",
+  "calls": [
+    {
+      "ticker": "ARCI.JK",
+      "action": "BELI",
+      "conviction": "Tinggi",
+      "flag": "good",
+      "entry": 1325,
+      "target": 1605,
+      "stop": 1185,
+      "reason": "Laba bersih melonjak nyata sebesar 132% pada Semester I 2026 menjadi US$80 juta didukung oleh momentum harga emas.",
+      "lot": 142
+    },
+    {
+      "ticker": "JPFA.JK",
+      "action": "BELI",
+      "conviction": "Sedang-Tinggi",
+      "flag": "good",
+      "entry": 2370,
+      "target": 2684,
+      "stop": 2213,
+      "reason": "Laba bersih Kuartal I melonjak 167% YoY didorong oleh penguatan harga ayam broiler dan DOC, dengan valuasi PER sangat murah di 4.88x.",
+      "lot": 127
+    },
+    {
+      "ticker": "SSIA.JK",
+      "action": "BELI (spekulatif)",
+      "conviction": "Sedang",
+      "flag": "neutral",
+      "entry": 1820,
+      "target": 2093,
+      "stop": 1684,
+      "reason": "Meskipun target pendapatan diturunkan tipis ke Rp7,2 triliun, angka ini tetap tumbuh 63% YoY dengan target laba bersih melonjak 570% YoY.",
+      "lot": 73
+    },
+    {
+      "ticker": "DMAS.JK",
+      "action": "TUNGGU PULLBACK",
+      "conviction": "Sedang",
+      "flag": "caution",
+      "entry": 180,
+      "target": 214,
+      "stop": 170,
+      "reason": "RSI sudah overbought di 72 setelah naik 38.8% sebulan, meskipun pra-penjualan Semester I mencapai Rp1,15 triliun (55% dari target)."
+    },
+    {
+      "ticker": "CUAN.JK",
+      "action": "TUNGGU PULLBACK",
+      "conviction": "Sedang",
+      "flag": "caution",
+      "entry": 850,
+      "target": 980,
+      "stop": 800,
+      "reason": "RSI mendekati overbought (68) setelah naik 32.6% sebulan; rencana akuisisi SINI masih dalam tahap negosiasi tanpa kepastian nilai kontrak."
+    },
+    {
+      "ticker": "JARR.JK",
+      "action": "HINDARI",
+      "conviction": "-",
+      "flag": "danger",
+      "entry": null,
+      "target": null,
+      "stop": null,
+      "reason": "RSI overbought (71) dengan kenaikan ekstrem +65.9% sebulan; aksi borong direksi hanya 11.000 lembar (tidak signifikan dibanding risiko pump)."
+    },
+    {
+      "ticker": "KIJA.JK",
+      "action": "HINDARI",
+      "conviction": "-",
+      "flag": "danger",
+      "entry": null,
+      "target": null,
+      "stop": null,
+      "reason": "Mengalami kenaikan pump +69.4% sebulan namun fundamental masih mencatatkan margin negatif (-1.3%) dan rentan pembalikan arah."
+    },
+    {
+      "ticker": "KOTA.JK",
+      "action": "HINDARI",
+      "conviction": "-",
+      "flag": "danger",
+      "entry": null,
+      "target": null,
+      "stop": null,
+      "reason": "Kenaikan harga didorong oleh rencana rights issue jumbo Rp4,4 triliun yang berisiko dilusi sangat besar bagi pemegang saham ritel."
+    },
+    {
+      "ticker": "INET.JK",
+      "action": "HINDARI",
+      "conviction": "-",
+      "flag": "danger",
+      "entry": null,
+      "target": null,
+      "stop": null,
+      "reason": "RSI overbought (71) setelah naik 59.5% sebulan; berita kerja sama dengan Huawei bersifat MoU non-konkret tanpa rincian nilai kontrak."
+    },
+    {
+      "ticker": "BBCA.JK",
+      "action": "TUNGGU PULLBACK",
+      "conviction": "Sedang",
+      "flag": "caution",
+      "entry": 6400,
+      "target": 6900,
+      "stop": 6200,
+      "reason": "RSI overbought di 72 dan dihantam aksi jual bersih asing dalam beberapa hari terakhir perdagangan."
+    },
+    {
+      "ticker": "BBRI.JK",
+      "action": "TUNGGU PULLBACK",
+      "conviction": "Sedang",
+      "flag": "caution",
+      "entry": 3200,
+      "target": 3600,
+      "stop": 3100,
+      "reason": "RSI sangat tinggi di 77; meskipun komitmen dividen kuat, harga sudah naik terlalu cepat dalam sebulan (+10%)."
+    },
+    {
+      "ticker": "BMRI.JK",
+      "action": "TUNGGU PULLBACK",
+      "conviction": "Sedang",
+      "flag": "caution",
+      "entry": 4150,
+      "target": 4500,
+      "stop": 4000,
+      "reason": "RSI overbought di 73 meskipun ada sentimen positif pembagian dividen interim sebesar Rp6,16 triliun."
+    },
+    {
+      "ticker": "BUMI.JK",
+      "action": "HINDARI",
+      "conviction": "-",
+      "flag": "danger",
+      "entry": null,
+      "target": null,
+      "stop": null,
+      "reason": "RSI sangat overbought di 79 setelah naik 21% sebulan; akuisisi tambang Australia berisiko membebani neraca keuangan."
+    },
+    {
+      "ticker": "ANTM.JK",
+      "action": "BELI (tenang)",
+      "conviction": "Sedang-Tinggi",
+      "flag": "good",
+      "entry": 3090,
+      "target": 3400,
+      "stop": 2950,
+      "reason": "Laba bersih Semester I tumbuh nyata 34% menjadi Rp6,91 triliun ditopang oleh lonjakan penjualan emas domestik.",
+      "lot": 142
+    },
+    {
+      "ticker": "TLKM.JK",
+      "action": "BELI (tenang)",
+      "conviction": "Sedang",
+      "flag": "good",
+      "entry": 2620,
+      "target": 2900,
+      "stop": 2500,
+      "reason": "Manajemen membocorkan komitmen rasio dividen minimal 60% dari laba bersih untuk tahun buku 2026.",
+      "lot": 166
+    }
+  ],
+  "positions": [
+    {
+      "ticker": "CMRY.JK",
+      "verdict": "TAHAN",
+      "reason": "Harga masih bertahan di atas trailing stop 4480 dengan posisi profit tipis."
+    },
+    {
+      "ticker": "BBNI.JK",
+      "verdict": "TAHAN",
+      "reason": "Posisi aman di atas trailing stop 3762, amankan dengan memindahkan stop loss ke titik impas."
+    },
+    {
+      "ticker": "HRTA.JK",
+      "verdict": "WASPADA",
+      "reason": "Harga berada di bawah harga entry 2330 namun masih di atas trailing stop 2110."
+    },
+    {
+      "ticker": "ADMR.JK",
+      "verdict": "WASPADA",
+      "reason": "Harga berada di bawah entry 1710, batasi risiko ketat dekat trailing stop 1582."
+    }
+  ],
+  "modal": 100000000
+}

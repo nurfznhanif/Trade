@@ -19,6 +19,10 @@ Kode tetap market-agnostic (atur di [`trade/config.py`](trade/config.py) → `MA
 | 4 | Paper trading (portfolio FULL vs TECH + benchmark, A/B sentimen) | ✅ |
 | — | Dashboard Streamlit + Keputusan Claude (`analysis.json`) + brief harian | ✅ |
 | 5 | Jurnal trading real (duit kecil): catat entry/exit, P/L, evaluasi vs sinyal | ✅ tooling |
+| + | `/analisa` diperluas: top-20 kandidat + **lensa big cap/LQ45** + penanda **musim MSCI** (`trade/msci.py`) | ✅ |
+| + | Jurnal dashboard: garis **Target Cuan** (checkpoint) + **horizon lama-tahan** (dari backtest) | ✅ |
+| + | `scripts/auto_analisa.py`: pipeline `/analisa` OTOMATIS (Gemini free + Tavily baca artikel) — otak buat app | 🧪 eksperimental |
+| + | App mobile (Expo/React Native) di `mobile/` — rangka, render `analysis.json` + bottom-nav | 🚧 WIP |
 
 ## Setup
 
@@ -107,7 +111,30 @@ berita aslinya** (via web, cross-check clickbait judul) — bukan cuma judul. Fo
   ]
 }
 ```
-`action`: BELI / TUNGGU PULLBACK / HINDARI · `flag`: good / neutral / caution / danger.
+`action`: BELI / BELI (tenang) / BELI (spekulatif) / TUNGGU PULLBACK / HINDARI · `flag`: good / neutral / caution / danger.
+Ada juga field `positions` (review posisi jurnal: **TAHAN / WASPADA / JUAL**), dan `modal`+`lot` per call
+kalau dijalankan `/analisa modal <angka>` (sizing otomatis). `/analisa` selalu ikut nilai **big cap/LQ45**
+(lensa turnover, walau skor mesin HOLD) dan nyelipin peringatan kalau lagi **musim rebalancing MSCI**.
+
+## App mobile + pipeline otomatis (WIP)
+
+Biar nggak perlu buka Claude Code tiap hari, ada dua bagian baru (masih eksperimental):
+
+- **`scripts/auto_analisa.py`** — versi KODE dari `/analisa`: kumpulin data + **baca isi berita**
+  (via [Tavily](https://tavily.com), search API gratis) → **Gemini (free tier)** mutusin
+  BELI/HINDARI + alasan (skeptis clickbait) → tulis `data/analysis.json`. Otak gratis pengganti
+  Claude Code buat backend/otomatis. Key dibaca dari `.env` (**gitignored**): `GEMINI_API_KEY`,
+  `TAVILY_API_KEY`.
+  ```bash
+  .venv/Scripts/python.exe scripts/auto_analisa.py --list-models    # cek model yang bisa dipakai
+  .venv/Scripts/python.exe scripts/auto_analisa.py --modal 100jt     # analisa + sizing lot
+  ```
+- **`mobile/`** — app mobile (Expo + React Native + TypeScript) yang render `analysis.json` jadi
+  kartu BELI/TUNGGU/HINDARI + review posisi, dengan **bottom-nav** ala app. Masih rangka (data
+  sampel bundel), belum nyambung backend.
+  ```bash
+  cd mobile && npx expo start --tunnel     # scan QR pakai Expo Go (--tunnel: nembus WiFi kantor)
+  ```
 
 ## Atur saham yang dipantau
 
@@ -126,6 +153,7 @@ trade/            package inti (market-agnostic)
   sentiment.py    skor sentimen berita
   fundamentals.py rasio + bendera merah (pagar anti-sampah)
   macro.py        regime IHSG (vs MA200) + indikator makro (kurs/komoditas/global)
+  msci.py         penanda musim rebalancing MSCI (arus asing big cap = flow, bukan tesis)
   risk.py         sizing (risk-based) + trailing stop (exit disiplin, samain backtest)
   indicators.py   MA / RSI / ATR
   signals.py      signal engine (teknikal + sentimen)
@@ -134,10 +162,11 @@ trade/            package inti (market-agnostic)
   journal.py      jurnal trading real (Fase 5): P/L + evaluasi vs sinyal
   screener.py     screener likuiditas -> focus_list
   universe.py     ambil daftar saham IDX resmi
-scripts/          entry point (daily.py orkestrator, brief.py, dll.)
+scripts/          entry point (daily.py orkestrator, auto_analisa.py = /analisa via Gemini, dll.)
 config/           watchlist.yaml
 data/             trade.db, analysis.json, brief_*.md, *.csv  (di-gitignore)
-dashboard.py      Streamlit
+dashboard.py      Streamlit (Beranda/Sinyal/Jurnal + Target Cuan & horizon di posisi)
+mobile/           app mobile Expo/React Native (rangka) — .env & node_modules gitignored
 ```
 
 ## Jalanin per-bagian (kalau perlu)

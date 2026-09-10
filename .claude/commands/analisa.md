@@ -14,7 +14,7 @@ Argumen `$ARGUMENTS`:
 - `modal <angka>` (mis. `modal 1500000`, `modal 1,5jt`, `modal 1.5 juta`) → SIZING otomatis:
   hitung berapa LOT tiap rekomendasi BELI buat modal segitu. Default risiko 2%/trade
   (`modal 1500000 risiko 1` buat ganti). Parse "juta"/"jt" = ×1.000.000, "rb"/"ribu" = ×1.000.
-- kosong → analisa harian penuh (semua kandidat teratas).
+- kosong → analisa harian penuh (top-20 kandidat by skor + WAJIB sertakan lensa big cap/LQ45).
 
 ## Langkah
 
@@ -25,13 +25,19 @@ Argumen `$ARGUMENTS`:
   nyaranin): `.venv/Scripts/python.exe scripts/daily.py` (tarik harga+berita+sinyal+brief, ~5 menit;
   jalanin background & TUNGGU kelar). Kabarin user lagi nge-refresh. Kalau udah fresh, skip.
 - Baca `data/brief_latest.md` (teknikal + fundamental + headline per kandidat). Catat baris "data per ...".
-- Tarik headline + info tambahan kandidat teratas dari DB:
+- Tarik headline + info tambahan kandidat teratas dari DB (TOP-20 by skor):
   ```
-  .venv/Scripts/python.exe -c "import sqlite3;from datetime import datetime,timedelta,timezone;c=sqlite3.connect('data/trade.db');c.row_factory=sqlite3.Row;top=[r['ticker'] for r in c.execute('SELECT ticker FROM signals ORDER BY score DESC LIMIT 12')];s=(datetime.now(timezone.utc)-timedelta(days=12)).isoformat();[print('\n###',t) or [print(' [',(x['published'] or '')[:10],']',x['title']) for x in c.execute('SELECT published,title FROM news WHERE ticker=? AND title IS NOT NULL AND (published IS NULL OR published>=?) ORDER BY published DESC LIMIT 8',(t,s))] for t in top]"
+  .venv/Scripts/python.exe -c "import sqlite3;from datetime import datetime,timedelta,timezone;c=sqlite3.connect('data/trade.db');c.row_factory=sqlite3.Row;top=[r['ticker'] for r in c.execute('SELECT ticker FROM signals ORDER BY score DESC LIMIT 20')];s=(datetime.now(timezone.utc)-timedelta(days=12)).isoformat();[print('\n###',t) or [print(' [',(x['published'] or '')[:10],']',x['title']) for x in c.execute('SELECT published,title FROM news WHERE ticker=? AND title IS NOT NULL AND (published IS NULL OR published>=?) ORDER BY published DESC LIMIT 8',(t,s))] for t in top]"
+  ```
+
+**1b. LENSA BIG CAP — WAJIB tiap hari (biar big cap gak pernah kelewat).**
+Engine skor itu momentum+berita, jadi big cap yang lagi flat/basing atau kadung overbought bakal ke-tag HOLD walau sebetulnya layak. Karena itu SELALU tarik ~15 saham turnover terbesar (de facto big cap/LQ45) — apa pun skornya — buat dinilai dari VALUASI + BERITA, bukan cuma momentum:
+  ```
+  .venv/Scripts/python.exe -c "import sys;sys.stdout.reconfigure(encoding='utf-8');import sqlite3;from datetime import datetime,timedelta,timezone;c=sqlite3.connect('data/trade.db');c.row_factory=sqlite3.Row;sig={r['ticker']:(r['score'],r['action']) for r in c.execute('SELECT ticker,score,action FROM signals')};q='WITH r AS (SELECT ticker,close,volume,ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY date DESC) rn FROM prices) SELECT ticker,AVG(close*volume) turn,MAX(CASE WHEN rn=1 THEN close END) last FROM r WHERE rn<=20 GROUP BY ticker ORDER BY turn DESC LIMIT 15';s=(datetime.now(timezone.utc)-timedelta(days=12)).isoformat();[print('\n###',b['ticker'],'~Rp%.1fM/hari last'%(b['turn']/1e9),int(b['last']),'[mesin',sig.get(b['ticker'],'-'),']') or [print('  [',(x['published'] or '')[:10],']',x['title']) for x in c.execute('SELECT published,title FROM news WHERE ticker=? AND title IS NOT NULL AND (published IS NULL OR published>=?) ORDER BY published DESC LIMIT 5',(b['ticker'],s))] for b in c.execute(q)]"
   ```
 
 **2. BACA ARTIKEL ASLI — langkah KUNCI, JANGAN di-skip.**
-Untuk tiap kandidat kuat (±8–12 teratas, atau ticker di `$ARGUMENTS`):
+Untuk tiap kandidat kuat (±12–20 teratas dari step 1, atau ticker di `$ARGUMENTS`) **DAN semua big cap dari step 1b**:
 - **WebSearch**: nama perusahaan + ticker + topik (mis. "laba semester", "target harga", "berita terbaru").
 - **WebFetch 1–2 artikel media BENERAN** (URL media langsung dari hasil search).
   ⚠️ Link `news.google.com/rss/articles/...` di DB **NGGAK bisa dibuka** (cangkang) — cari URL media aslinya lewat WebSearch.
@@ -40,6 +46,9 @@ Untuk tiap kandidat kuat (±8–12 teratas, atau ticker di `$ARGUMENTS`):
 
 **3. Baca makro** dari arus berita (arah IHSG, arus asing, tema sektor panas). Jujur: angka
 IHSG belum ada di DB, jadi tone makro dibaca dari berita.
+- **Cek MUSIM MSCI** (rebalancing MSCI = arus asing jumbo di saham likuid/big cap, sering teknikal bukan fundamental):
+  `.venv/Scripts/python.exe -c "from datetime import date;from trade.msci import msci_status;print(msci_status(date.today())['note'])"`
+  Kalau `near`/lagi musim → SELIPKAN peringatannya di field `macro` + laporan (ingatkan: lonjakan/tekanan asing dekat rebalancing itu FLOW, jangan panik jual/kejar cuma gara-gara ini; big cap paling kena). Kalau aman → cukup sebut singkat tanggal rebalance berikutnya.
 
 **4. Tulis `data/analysis.json`** — skema PERSIS (dibaca dashboard):
 ```json
@@ -71,6 +80,7 @@ IHSG belum ada di DB, jadi tone makro dibaca dari berita.
   (atau rumus: `lot = floor(modal*risk / ((entry-stop)*100))`, cap `lot*100*entry <= modal`; kalau 1 lot
   aja kemahalan → `lot: 0`). Tambah `"lot"` per call BELI + `"modal"` top-level; di `reason` sebut singkat
   (mis. "modal 1,5jt → 1 lot"). TANPA modal: cukup ingetin user pakai kalkulator dashboard.
+- **BIG CAP (dari step 1b) WAJIB dinilai tiap hari** — walau skor mesin HOLD (engine momentum sering nge-HOLD big cap yang flat/basing ATAU yang udah overbought). Nilai dari VALUASI + BERITA + teknikal, bukan cuma momentum, lalu kasih verdict normal (BELI/BELI tenang/TUNGGU PULLBACK/HINDARI) dan masukin ke `calls`. Big cap uptrend tapi RSI>70 → `TUNGGU PULLBACK`; big cap murah/berkatalis & belum overbought → boleh `BELI`; yang basing tanpa katalis → boleh di-skip TAPI sebut singkat di laporan kenapa. Jangan diamkan big cap tanpa keterangan.
 - RSI > 70 **atau** sudah +25–30% sebulan → `TUNGGU PULLBACK` (jangan kejar).
 - Insider selling / rugi / PER cangkang / pump / suspensi → `HINDARI` atau `caution`, **walau skor mesin hijau**.
 - Data fundamental yfinance yang ekstrem/ngaco (PBV/DER/divyield absurd) → ABAIKAN, sebut kalau relevan.
