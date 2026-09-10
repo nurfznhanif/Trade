@@ -2,11 +2,31 @@
 //   - web / emulator di laptop : http://127.0.0.1:8000
 //   - HP via hotspot / LAN     : http://<IP-laptop>:8000   (mis. 192.168.x.x)
 //   - HP via tunnel            : URL ngrok / cloudflare
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Analysis } from "./analysis";
 
+const BASE_KEY = "trade_api_base";
 export let API_BASE = "http://127.0.0.1:8000";
+
 export function setApiBase(url: string) {
   API_BASE = url.replace(/\/+$/, "");
+}
+
+// muat alamat backend tersimpan (panggil pas app start, sebelum fetch)
+export async function loadApiBase(): Promise<string> {
+  try {
+    const v = await AsyncStorage.getItem(BASE_KEY);
+    if (v) API_BASE = v.replace(/\/+$/, "");
+  } catch {}
+  return API_BASE;
+}
+
+// set + simpan permanen
+export async function saveApiBase(url: string): Promise<void> {
+  API_BASE = url.replace(/\/+$/, "");
+  try {
+    await AsyncStorage.setItem(BASE_KEY, API_BASE);
+  } catch {}
 }
 
 async function req(path: string, init?: RequestInit) {

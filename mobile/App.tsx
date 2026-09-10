@@ -28,9 +28,10 @@ import {
   API_BASE,
   getAnalysis,
   getLlmConfig,
+  loadApiBase,
   LlmInfo,
   runAnalisa,
-  setApiBase,
+  saveApiBase,
   setLlmConfig,
   testLlm,
 } from "./src/api";
@@ -60,11 +61,14 @@ export default function App() {
   const [live, setLive] = useState(false);
   const [note, setNote] = useState("");
 
-  // ambil analisa terbaru dari backend pas app dibuka
-  useEffect(() => {
+  // ambil analisa terbaru dari backend pas app dibuka (pakai alamat tersimpan)
+  const loadLive = () =>
     getAnalysis()
-      .then((a) => { setData(a); setLive(true); })
+      .then((a) => { setData(a); setLive(true); setNote(""); })
       .catch(() => setNote("Backend belum nyambung — nampilin data sampel. Set alamat di Pengaturan."));
+
+  useEffect(() => {
+    loadApiBase().then(loadLive);
   }, []);
 
   const counts = useMemo(() => {
@@ -209,7 +213,7 @@ export default function App() {
           <Soon icon="trending-up" title="Chart Harga" desc="Grafik harga + MA + level entry/target/stop langsung di chart." />
         )}
 
-        {nav === "pengaturan" && <SettingsScreen />}
+        {nav === "pengaturan" && <SettingsScreen onConnected={loadLive} />}
 
         <Text style={styles.footer}>
           Trade IDX · {live ? "tersambung backend" : `backend: ${API_BASE}`}
@@ -328,7 +332,7 @@ function PositionCard({ p }: { p: Position }) {
   );
 }
 
-function SettingsScreen() {
+function SettingsScreen({ onConnected }: { onConnected: () => void }) {
   const [info, setInfo] = useState<LlmInfo | null>(null);
   const [prov, setProv] = useState("gemini");
   const [model, setModel] = useState("");
@@ -337,26 +341,29 @@ function SettingsScreen() {
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
+  const loadConfig = () =>
     getLlmConfig()
       .then((i) => { setInfo(i); setProv(i.provider); setModel(i.model); })
       .catch((e) => setMsg("Backend belum nyambung: " + String(e?.message || e)));
-  }, []);
+
+  useEffect(() => { loadConfig(); }, []);
 
   const providers = info ? Object.entries(info.providers) : [];
   const pinfo = info?.providers[prov];
 
-  const save = () => {
-    setBusy(true); setMsg(""); setApiBase(base);
+  const save = async () => {
+    setBusy(true); setMsg("");
+    await saveApiBase(base);
     setLlmConfig({ provider: prov, model: model.trim(), api_key: key.trim() || undefined })
-      .then(() => { setMsg("Tersimpan. Provider aktif: " + (pinfo?.label || prov)); setKey(""); })
+      .then(() => { setMsg("Tersimpan. Provider aktif: " + (pinfo?.label || prov)); setKey(""); loadConfig(); onConnected(); })
       .catch((e) => setMsg("Gagal simpan: " + String(e?.message || e)))
       .finally(() => setBusy(false));
   };
-  const test = () => {
-    setBusy(true); setMsg("Nyoba nyambung…"); setApiBase(base);
+  const test = async () => {
+    setBusy(true); setMsg("Nyoba nyambung…");
+    await saveApiBase(base);
     testLlm()
-      .then((r) => setMsg(r.message))
+      .then((r) => { setMsg(r.message); if (r.ok) { loadConfig(); onConnected(); } })
       .catch((e) => setMsg("Gagal tes: " + String(e?.message || e)))
       .finally(() => setBusy(false));
   };
