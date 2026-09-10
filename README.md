@@ -129,11 +129,17 @@ Biar nggak perlu buka Claude Code tiap hari, ada dua bagian baru (masih eksperim
   .venv/Scripts/python.exe scripts/auto_analisa.py --list-models    # cek model yang bisa dipakai
   .venv/Scripts/python.exe scripts/auto_analisa.py --modal 100jt     # analisa + sizing lot
   ```
-- **`mobile/`** — app mobile (Expo + React Native + TypeScript) yang render `analysis.json` jadi
-  kartu BELI/TUNGGU/HINDARI + review posisi, dengan **bottom-nav** ala app. Masih rangka (data
-  sampel bundel), belum nyambung backend.
+- **`backend/api.py` + `scripts/serve.py`** — backend FastAPI buat app mobile (serve analisa,
+  jalanin auto_analisa, atur LLM). **Jalanin sekali tiap mau pakai app:**
   ```bash
-  cd mobile && npx expo start --tunnel     # scan QR pakai Expo Go (--tunnel: nembus WiFi kantor)
+  .venv/Scripts/python.exe scripts/serve.py    # nyalain backend + tunnel cloudflared, cetak URL publik
+  ```
+  Tempel URL yang muncul ke app (Pengaturan → Alamat Backend). Butuh `tools/cloudflared.exe`
+  (download sekali dari releases cloudflare).
+- **`mobile/`** — app mobile (Expo + React Native + TS): kartu analisa + Jurnal + **menu Pengaturan LLM**
+  (bongkar-pasang provider dari HP), narik data LIVE dari backend, tombol Analisa jalanin pipeline.
+  ```bash
+  cd mobile && npx expo start --tunnel     # buka via Expo Go (scan QR). Nanti: build APK biar standalone
   ```
 
 ## Atur saham yang dipantau

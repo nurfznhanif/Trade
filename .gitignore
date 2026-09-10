@@ -8,3 +8,4 @@ data/
 
 # Claude Code — setelan izin per-mesin (jangan dibagi); command/ boleh di-commit
 .claude/settings.local.json
+tools/
