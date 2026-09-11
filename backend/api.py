@@ -81,6 +81,21 @@ def get_analysis():
     return json.loads(ANALYSIS.read_text(encoding="utf-8"))
 
 
+def _friendly_error(output: str) -> tuple[int, str]:
+    """Terjemahin output error auto_analisa ke pesan yang kebaca user di app."""
+    o = output or ""
+    lo = o.lower()
+    if "429" in o or "quota" in lo or "resource_exhausted" in lo or "rate limit" in lo:
+        return 429, ("Kuota LLM habis (limit gratis hari ini tercapai). Tunggu reset harian, "
+                     "atau ganti provider/model di menu Pengaturan (mis. Groq — gratis & cepat).")
+    if "api_key_invalid" in lo or "permission_denied" in lo or "401" in o or "api key" in lo:
+        return 401, "API key LLM belum bener/kosong. Isi ulang di menu Pengaturan."
+    if "timeout" in lo or "timed out" in lo:
+        return 504, "LLM kelamaan gak balas (timeout). Coba lagi sebentar."
+    tail = o.strip().splitlines()[-1][:200] if o.strip() else "error tak dikenal"
+    return 500, f"Analisa gagal: {tail}"
+
+
 @app.post("/analisa")
 def run_analisa(modal: str | None = None):
     """Jalanin auto_analisa (baca data+berita -> LLM -> tulis analysis.json). ~1-2 menit."""
@@ -90,9 +105,10 @@ def run_analisa(modal: str | None = None):
     try:
         p = subprocess.run(cmd, cwd=str(BASE), capture_output=True, text=True, timeout=420)
     except subprocess.TimeoutExpired:
-        raise HTTPException(504, "auto_analisa timeout (>7 menit).")
+        raise HTTPException(504, "Analisa timeout (>7 menit). Coba lagi sebentar.")
     if p.returncode != 0:
-        raise HTTPException(500, f"auto_analisa gagal: {(p.stderr or p.stdout)[-600:]}")
+        code, msg = _friendly_error(p.stderr or p.stdout)
+        raise HTTPException(code, msg)
     return json.loads(ANALYSIS.read_text(encoding="utf-8"))
 
 
