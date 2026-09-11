@@ -1,6 +1,7 @@
 import { ComponentProps, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -22,17 +23,26 @@ import {
   Position,
   rr,
   sampleAnalysis,
+  sentColor,
+  sigColor,
   verdictColor,
 } from "./src/analysis";
 import {
   API_BASE,
   getAnalysis,
   getLlmConfig,
+  getNews,
+  getPrices,
+  getSignals,
   loadApiBase,
   LlmInfo,
+  Mover,
+  NewsItem,
+  Prices,
   runAnalisa,
   saveApiBase,
   setLlmConfig,
+  Signal,
   testLlm,
 } from "./src/api";
 
@@ -203,15 +213,9 @@ export default function App() {
           </>
         )}
 
-        {nav === "sinyal" && (
-          <Soon icon="pulse" title="Sinyal Mesin" desc="Skor teknikal + sentimen per saham, urut kekuatan. Nyusul pas datanya disambungin." />
-        )}
-        {nav === "berita" && (
-          <Soon icon="newspaper-outline" title="Sentimen Berita" desc="Feed berita per saham + skor sentimen dari isi artikel." />
-        )}
-        {nav === "chart" && (
-          <Soon icon="trending-up" title="Chart Harga" desc="Grafik harga + MA + level entry/target/stop langsung di chart." />
-        )}
+        {nav === "sinyal" && <SignalsScreen />}
+        {nav === "berita" && <NewsScreen />}
+        {nav === "chart" && <ChartScreen data={data} />}
 
         {nav === "pengaturan" && <SettingsScreen onConnected={loadLive} />}
 
@@ -242,15 +246,311 @@ function BottomNav({ nav, setNav }: { nav: Nav; setNav: (n: Nav) => void }) {
   );
 }
 
-function Soon({ icon, title, desc }: { icon: IconName; title: string; desc: string }) {
+// ---- fetch helper: loading / data / error dalam satu state ----
+function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) {
+  const [s, setS] = useState<{ loading: boolean; data: T | null; err: string }>({
+    loading: true,
+    data: null,
+    err: "",
+  });
+  useEffect(() => {
+    let alive = true;
+    setS({ loading: true, data: null, err: "" });
+    fn()
+      .then((d) => alive && setS({ loading: false, data: d, err: "" }))
+      .catch((e) => alive && setS({ loading: false, data: null, err: String(e?.message || e) }));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+  return s;
+}
+
+function Loading() {
+  return (
+    <View style={styles.center}>
+      <ActivityIndicator color="#2dd4bf" />
+      <Text style={styles.centerText}>Ngambil data…</Text>
+    </View>
+  );
+}
+
+function ErrBox({ msg }: { msg: string }) {
   return (
     <View style={styles.soon}>
-      <Ionicons name={icon} size={44} color="#56606c" />
-      <Text style={styles.soonTitle}>{title}</Text>
-      <Text style={styles.soonDesc}>{desc}</Text>
-      <View style={styles.soonTag}>
-        <Text style={styles.soonTagText}>SEGERA HADIR</Text>
+      <Ionicons name="cloud-offline-outline" size={40} color="#56606c" />
+      <Text style={styles.soonTitle}>Backend belum nyambung</Text>
+      <Text style={styles.soonDesc}>{msg || "Gagal ambil data."}</Text>
+      <Text style={styles.soonDesc}>Set alamat backend di menu Pengaturan (ikon gerigi kanan atas).</Text>
+    </View>
+  );
+}
+
+function Metric({ label, val, color }: { label: string; val: string; color?: string }) {
+  return (
+    <View style={styles.metric}>
+      <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={[styles.metricVal, color ? { color } : null]}>{val}</Text>
+    </View>
+  );
+}
+
+// ============================ TAB SINYAL ============================
+function SignalsScreen() {
+  const { loading, data, err } = useAsync(() => getSignals(40), []);
+  if (loading) return <Loading />;
+  if (err || !data) return <ErrBox msg={err} />;
+  return (
+    <>
+      <View style={styles.secHead}>
+        <Text style={styles.sectionTitle}>SINYAL MESIN</Text>
+        <Text style={styles.secSub}>skor teknikal + sentimen · {data.asof}</Text>
       </View>
+      {data.signals.map((s, i) => (
+        <SignalRow key={s.ticker} s={s} rank={i + 1} />
+      ))}
+    </>
+  );
+}
+
+function SignalRow({ s, rank }: { s: Signal; rank: number }) {
+  const col = sigColor(s.action);
+  const trend =
+    s.ma20 && s.ma50
+      ? s.close > s.ma20 && s.ma20 > s.ma50
+        ? "uptrend"
+        : s.close < s.ma20 && s.ma20 < s.ma50
+        ? "downtrend"
+        : "sideways"
+      : "";
+  return (
+    <View style={[styles.card, { borderLeftColor: col }]}>
+      <View style={styles.cardTop}>
+        <View style={styles.sigLeft}>
+          <Text style={styles.rank}>#{rank}</Text>
+          <Text style={styles.ticker}>{s.ticker.replace(".JK", "")}</Text>
+        </View>
+        <View style={[styles.badge, { backgroundColor: col + "22", borderColor: col }]}>
+          <Text style={[styles.badgeText, { color: col }]}>{s.action}</Text>
+        </View>
+      </View>
+      <View style={styles.metricRow}>
+        <Metric label="Skor" val={s.score.toFixed(2)} />
+        {s.rsi != null ? (
+          <Metric
+            label="RSI"
+            val={s.rsi.toFixed(0)}
+            color={s.rsi >= 70 ? "#ef4444" : s.rsi <= 30 ? "#22c55e" : undefined}
+          />
+        ) : null}
+        {s.sent != null ? (
+          <Metric label="Sentimen" val={(s.sent >= 0 ? "+" : "") + s.sent.toFixed(2)} color={sentColor(s.sent)} />
+        ) : null}
+        <Metric label="Berita" val={String(s.n_news)} />
+      </View>
+      {trend ? (
+        <Text style={styles.trendText}>
+          {trend} · harga {fmtInt(s.close)}
+        </Text>
+      ) : null}
+      {s.reasons && s.reasons.length > 0 ? (
+        <View style={styles.reasonWrap}>
+          {s.reasons.slice(0, 3).map((r, idx) => (
+            <View key={idx} style={styles.reasonItem}>
+              <View style={[styles.rDot, { backgroundColor: col }]} />
+              <Text style={styles.reasonSmall}>{r}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+// ============================ TAB BERITA ============================
+function fmtDate(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(+d)) return "";
+  const days = Math.floor((Date.now() - +d) / 86400000);
+  if (days <= 0) return "hari ini";
+  if (days === 1) return "kemarin";
+  if (days < 7) return `${days} hari lalu`;
+  return d.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+}
+
+function NewsScreen() {
+  const { loading, data, err } = useAsync(() => getNews(undefined, 40), []);
+  if (loading) return <Loading />;
+  if (err || !data) return <ErrBox msg={err} />;
+  return (
+    <>
+      <View style={styles.secHead}>
+        <Text style={styles.sectionTitle}>SENTIMEN BERITA</Text>
+        <Text style={styles.secSub}>skor dari isi berita · 14 hari terakhir</Text>
+      </View>
+      {data.positif.length > 0 || data.negatif.length > 0 ? (
+        <View style={styles.moverBox}>
+          <MoverRow label="Paling positif" movers={data.positif} pos />
+          <MoverRow label="Paling negatif" movers={data.negatif} />
+        </View>
+      ) : null}
+      {data.items.map((n, i) => (
+        <NewsCard key={i} n={n} />
+      ))}
+    </>
+  );
+}
+
+function MoverRow({ label, movers, pos }: { label: string; movers: Mover[]; pos?: boolean }) {
+  if (!movers.length) return null;
+  const col = pos ? "#22c55e" : "#ef4444";
+  return (
+    <View style={styles.moverRow}>
+      <Text style={styles.moverLabel}>{label}</Text>
+      <View style={styles.moverChips}>
+        {movers.map((m) => (
+          <View key={m.ticker} style={[styles.moverChip, { borderColor: col + "55" }]}>
+            <Text style={[styles.moverTicker, { color: col }]}>{m.ticker.replace(".JK", "")}</Text>
+            <Text style={styles.moverAvg}>{(m.avg >= 0 ? "+" : "") + m.avg.toFixed(2)}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function NewsCard({ n }: { n: NewsItem }) {
+  const col = sentColor(n.sent_score);
+  const open = () => {
+    if (n.link) Linking.openURL(n.link).catch(() => {});
+  };
+  return (
+    <Pressable style={styles.newsCard} onPress={open} disabled={!n.link}>
+      <View style={[styles.sentDot, { backgroundColor: col }]} />
+      <View style={styles.flex1}>
+        <Text style={styles.newsTitle} numberOfLines={2}>
+          {n.title}
+        </Text>
+        <View style={styles.newsMeta}>
+          <Text style={[styles.newsTicker, { color: col }]}>{n.ticker.replace(".JK", "")}</Text>
+          <Text style={styles.newsDot}>·</Text>
+          <Text style={styles.newsSrc}>{n.source || "?"}</Text>
+          <Text style={styles.newsDot}>·</Text>
+          <Text style={styles.newsSrc}>{fmtDate(n.published)}</Text>
+        </View>
+      </View>
+      {n.link ? <Ionicons name="open-outline" size={15} color="#56606c" /> : null}
+    </Pressable>
+  );
+}
+
+// ============================ TAB CHART ============================
+function ChartScreen({ data }: { data: Analysis }) {
+  const tickers = useMemo(() => {
+    const t = [...data.calls.map((c) => c.ticker), ...(data.positions || []).map((p) => p.ticker)];
+    return Array.from(new Set(t));
+  }, [data]);
+  const [sel, setSel] = useState(tickers[0] || "BMRI.JK");
+  const { loading, data: px, err } = useAsync(() => getPrices(sel, 90), [sel]);
+  return (
+    <>
+      <View style={styles.secHead}>
+        <Text style={styles.sectionTitle}>CHART HARGA</Text>
+        <Text style={styles.secSub}>90 hari · level target/stop dari sinyal</Text>
+      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.chipScroll}
+        contentContainerStyle={styles.chipScrollInner}
+      >
+        {tickers.map((t) => (
+          <Pressable key={t} onPress={() => setSel(t)} style={[styles.chip, sel === t && styles.chipOn]}>
+            <Text style={[styles.chipText, sel === t && styles.chipTextOn]}>{t.replace(".JK", "")}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+      {loading ? <Loading /> : err || !px ? <ErrBox msg={err} /> : <ChartPanel px={px} />}
+    </>
+  );
+}
+
+function RefLine({ y, color, label }: { y: number; color: string; label: string }) {
+  return (
+    <View style={[styles.refLine, { top: y }]} pointerEvents="none">
+      <View style={[styles.refDash, { borderColor: color }]} />
+      <Text style={[styles.refLabel, { color }]}>{label}</Text>
+    </View>
+  );
+}
+
+function ChartPanel({ px }: { px: Prices }) {
+  const H = 168;
+  const s = px.series;
+  const lv = px.levels;
+  let lo = Math.min(...s.map((b) => b.low));
+  let hi = Math.max(...s.map((b) => b.high));
+  [lv.stop, lv.target].forEach((v) => {
+    if (v != null) {
+      lo = Math.min(lo, v);
+      hi = Math.max(hi, v);
+    }
+  });
+  const range = hi - lo || 1;
+  const y = (v: number) => H - ((v - lo) / range) * H;
+  const up = "#22c55e";
+  const down = "#ef4444";
+  const chg = px.chg_pct ?? 0;
+  const sig = px.signal;
+  const sc = sig ? sigColor(sig.action) : "#7d8792";
+  return (
+    <View>
+      <View style={styles.chartHead}>
+        <View>
+          <Text style={styles.chartTicker}>{px.ticker.replace(".JK", "")}</Text>
+          <Text style={styles.chartLast}>
+            Rp{fmtInt(px.last)}{" "}
+            <Text style={{ color: chg >= 0 ? up : down, fontSize: 13, fontWeight: "700" }}>
+              {chg >= 0 ? "+" : ""}
+              {chg}% · {px.days}h
+            </Text>
+          </Text>
+        </View>
+        {sig ? (
+          <View style={[styles.badge, { backgroundColor: sc + "22", borderColor: sc }]}>
+            <Text style={[styles.badgeText, { color: sc }]}>{sig.action}</Text>
+          </View>
+        ) : null}
+      </View>
+
+      <View style={[styles.chartBox, { height: H }]}>
+        <View style={styles.barsRow}>
+          {s.map((b, i) => {
+            const top = y(b.high);
+            const h = Math.max(1.5, y(b.low) - y(b.high));
+            const c = b.close >= b.open ? up : down;
+            return (
+              <View key={i} style={styles.barCell}>
+                <View style={{ marginTop: top, height: h, width: 2.2, borderRadius: 1.5, backgroundColor: c, opacity: 0.85 }} />
+              </View>
+            );
+          })}
+        </View>
+        {lv.target != null ? <RefLine y={y(lv.target)} color={up} label={`T ${fmtInt(lv.target)}`} /> : null}
+        {lv.stop != null ? <RefLine y={y(lv.stop)} color={down} label={`S ${fmtInt(lv.stop)}`} /> : null}
+      </View>
+
+      {sig ? (
+        <View style={styles.metricRow}>
+          <Metric label="Skor" val={sig.score.toFixed(2)} />
+          <Metric label="RSI" val={sig.rsi.toFixed(0)} color={sig.rsi >= 70 ? down : sig.rsi <= 30 ? up : undefined} />
+          <Metric label="Sentimen" val={(sig.sent >= 0 ? "+" : "") + sig.sent.toFixed(2)} color={sentColor(sig.sent)} />
+          {lv.ma20 != null ? <Metric label="MA20" val={fmtInt(lv.ma20)} /> : null}
+          {lv.ma50 != null ? <Metric label="MA50" val={fmtInt(lv.ma50)} /> : null}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -510,4 +810,52 @@ const styles = StyleSheet.create({
   posCard: { backgroundColor: "#121821", borderRadius: 14, padding: 14, marginTop: 12, borderLeftWidth: 4, borderWidth: 1, borderColor: "#1e2731" },
 
   footer: { color: "#4b5560", fontSize: 11, textAlign: "center", marginTop: 28 },
+
+  // ---- shared tab data ----
+  center: { alignItems: "center", justifyContent: "center", paddingVertical: 56, gap: 10 },
+  centerText: { color: "#7d8792", fontSize: 13 },
+  secHead: { marginTop: 18, marginBottom: 2 },
+  secSub: { color: "#7d8792", fontSize: 12, marginTop: 2 },
+  metricRow: { flexDirection: "row", gap: 16, marginTop: 12, flexWrap: "wrap" },
+  metric: { minWidth: 52 },
+  metricLabel: { color: "#7d8792", fontSize: 10, fontWeight: "700", letterSpacing: 0.5 },
+  metricVal: { color: "#e6edf3", fontSize: 15, fontWeight: "800", marginTop: 2 },
+
+  // ---- Sinyal ----
+  sigLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
+  rank: { color: "#56606c", fontSize: 13, fontWeight: "800" },
+  trendText: { color: "#8b95a1", fontSize: 12, marginTop: 10 },
+  reasonWrap: { marginTop: 10, gap: 6 },
+  reasonItem: { flexDirection: "row", alignItems: "flex-start", gap: 7 },
+  rDot: { width: 5, height: 5, borderRadius: 3, marginTop: 6 },
+  reasonSmall: { color: "#c2cbd4", fontSize: 12, lineHeight: 17, flex: 1 },
+
+  // ---- Berita ----
+  moverBox: { backgroundColor: "#121821", borderRadius: 14, padding: 12, marginTop: 14, borderWidth: 1, borderColor: "#1e2731", gap: 10 },
+  moverRow: { gap: 6 },
+  moverLabel: { color: "#7d8792", fontSize: 11, fontWeight: "700", letterSpacing: 0.5 },
+  moverChips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  moverChip: { flexDirection: "row", alignItems: "center", gap: 5, borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
+  moverTicker: { fontSize: 12, fontWeight: "800" },
+  moverAvg: { color: "#7d8792", fontSize: 11, fontWeight: "700" },
+  newsCard: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#121821", borderRadius: 12, padding: 12, marginTop: 10, borderWidth: 1, borderColor: "#1e2731" },
+  sentDot: { width: 9, height: 9, borderRadius: 5 },
+  newsTitle: { color: "#e6edf3", fontSize: 13, fontWeight: "600", lineHeight: 18 },
+  newsMeta: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 5 },
+  newsTicker: { fontSize: 11, fontWeight: "800" },
+  newsDot: { color: "#3a434e", fontSize: 11 },
+  newsSrc: { color: "#7d8792", fontSize: 11 },
+
+  // ---- Chart ----
+  chipScroll: { marginTop: 12, marginBottom: 2 },
+  chipScrollInner: { gap: 8, paddingRight: 8 },
+  chartHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 14 },
+  chartTicker: { color: "#e6edf3", fontSize: 22, fontWeight: "800", letterSpacing: 1 },
+  chartLast: { color: "#e6edf3", fontSize: 18, fontWeight: "800", marginTop: 2 },
+  chartBox: { backgroundColor: "#0e141b", borderRadius: 12, borderWidth: 1, borderColor: "#1e2731", marginTop: 14, position: "relative", overflow: "hidden" },
+  barsRow: { flexDirection: "row", height: "100%", alignItems: "flex-start" },
+  barCell: { flex: 1, alignItems: "center" },
+  refLine: { position: "absolute", left: 0, right: 0, flexDirection: "row", alignItems: "center" },
+  refDash: { flex: 1, borderTopWidth: 1, borderStyle: "dashed", height: 0, opacity: 0.55 },
+  refLabel: { fontSize: 9, fontWeight: "800", marginLeft: 4, marginRight: 4 },
 });

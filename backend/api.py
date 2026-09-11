@@ -10,6 +10,7 @@ Jalanin:
 from __future__ import annotations
 
 import json
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -21,7 +22,15 @@ from pydantic import BaseModel
 BASE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE))
 ANALYSIS = BASE / "data" / "analysis.json"
+DB = BASE / "data" / "trade.db"
 ENV = BASE / ".env"
+
+
+def db() -> sqlite3.Connection:
+    """Koneksi read-only ke trade.db (row = dict-like)."""
+    conn = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 from trade import llm  # noqa: E402
 
@@ -85,6 +94,92 @@ def run_analisa(modal: str | None = None):
     if p.returncode != 0:
         raise HTTPException(500, f"auto_analisa gagal: {(p.stderr or p.stdout)[-600:]}")
     return json.loads(ANALYSIS.read_text(encoding="utf-8"))
+
+
+# ---------------------------------------------------------------- data tab (Sinyal/Berita/Chart)
+@app.get("/signals")
+def get_signals(limit: int = 40):
+    """Sinyal mesin per saham, urut skor tertinggi (buat tab Sinyal)."""
+    conn = db()
+    try:
+        asof = conn.execute("SELECT MAX(asof) FROM signals").fetchone()[0]
+        rows = conn.execute(
+            "SELECT ticker,action,score,close,ma20,ma50,rsi,sent,n_news,stop,target,reasons "
+            "FROM signals ORDER BY score DESC LIMIT ?", (limit,)).fetchall()
+    finally:
+        conn.close()
+    out = []
+    for r in rows:
+        try:
+            reasons = json.loads(r["reasons"]) if r["reasons"] else []
+        except Exception:
+            reasons = []
+        d = dict(r)
+        d["reasons"] = reasons
+        out.append(d)
+    return {"asof": asof, "signals": out}
+
+
+@app.get("/news")
+def get_news(ticker: str | None = None, limit: int = 40):
+    """Berita terbaru + skor sentimen (lexicon). Plus ringkasan sentimen per saham."""
+    conn = db()
+    try:
+        params: list = []
+        where = "WHERE title IS NOT NULL"
+        if ticker:
+            t = ticker.upper()
+            t = t if t.endswith(".JK") else t + ".JK"
+            where += " AND ticker=?"
+            params.append(t)
+        items = conn.execute(
+            f"SELECT ticker,published,title,source,link,sent_label,sent_score "
+            f"FROM news {where} ORDER BY published DESC LIMIT ?", (*params, limit)).fetchall()
+        # ringkasan: rata-rata sentimen per saham (14 hari, min 2 berita) -> top +/-
+        agg = conn.execute(
+            "SELECT ticker, AVG(sent_score) avg_s, COUNT(*) n "
+            "FROM news WHERE published >= date('now','-14 days') AND sent_score IS NOT NULL "
+            "GROUP BY ticker HAVING n >= 2 ORDER BY avg_s DESC").fetchall()
+    finally:
+        conn.close()
+    movers = [{"ticker": a["ticker"], "avg": round(a["avg_s"], 3), "n": a["n"]} for a in agg]
+    return {
+        "items": [dict(r) for r in items],
+        "positif": movers[:5],
+        "negatif": [m for m in reversed(movers) if m["avg"] < 0][:5],
+    }
+
+
+@app.get("/prices")
+def get_prices(ticker: str, days: int = 90):
+    """Deret harga harian (OHLC) + level dari sinyal (buat tab Chart)."""
+    t = ticker.upper()
+    t = t if t.endswith(".JK") else t + ".JK"
+    conn = db()
+    try:
+        rows = conn.execute(
+            "SELECT date,open,high,low,close FROM prices WHERE ticker=? ORDER BY date DESC LIMIT ?",
+            (t, days)).fetchall()
+        sig = conn.execute(
+            "SELECT action,score,rsi,ma20,ma50,sent,n_news,stop,target FROM signals WHERE ticker=?",
+            (t,)).fetchone()
+    finally:
+        conn.close()
+    if not rows:
+        raise HTTPException(404, f"Gak ada data harga buat {t}")
+    series = [dict(r) for r in reversed(rows)]  # urut lama -> baru
+    last, first = series[-1]["close"], series[0]["close"]
+    return {
+        "ticker": t,
+        "days": len(series),
+        "last": last,
+        "chg_pct": round((last / first - 1) * 100, 1) if first else None,
+        "series": series,
+        "levels": {"ma20": sig["ma20"], "ma50": sig["ma50"],
+                   "stop": sig["stop"], "target": sig["target"]} if sig else {},
+        "signal": {"action": sig["action"], "score": sig["score"], "rsi": sig["rsi"],
+                   "sent": sig["sent"], "n_news": sig["n_news"]} if sig else None,
+    }
 
 
 # ---------------------------------------------------------------- config LLM

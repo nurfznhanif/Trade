@@ -53,6 +53,22 @@ export function verdictColor(v: string): string {
   return "#22c55e"; // TAHAN
 }
 
+// warna sentimen berita: + hijau, - merah, ~0 netral (biru)
+export function sentColor(score: number | null | undefined): string {
+  if (score == null) return "#7d8792";
+  if (score > 0.15) return "#22c55e";
+  if (score < -0.15) return "#ef4444";
+  return "#38bdf8";
+}
+
+// warna aksi sinyal mesin (BUY/HOLD/SELL)
+export function sigColor(action: string): string {
+  const a = action.toUpperCase();
+  if (a.includes("BUY") || a.includes("BELI")) return "#22c55e";
+  if (a.includes("SELL") || a.includes("HINDARI") || a.includes("AVOID")) return "#ef4444";
+  return "#f59e0b"; // HOLD
+}
+
 // kelompok tab
 export function group(action: string): "beli" | "tunggu" | "hindari" {
   if (action.startsWith("BELI")) return "beli";

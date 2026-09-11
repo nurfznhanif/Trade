@@ -63,3 +63,62 @@ export const setLlmConfig = (cfg: {
 
 export const testLlm = (): Promise<{ ok: boolean; message: string }> =>
   req("/config/llm/test", { method: "POST" });
+
+// ---- Sinyal mesin (tab Sinyal) ----
+export interface Signal {
+  ticker: string;
+  action: string;
+  score: number;
+  close: number;
+  ma20: number | null;
+  ma50: number | null;
+  rsi: number | null;
+  sent: number | null;
+  n_news: number;
+  stop: number | null;
+  target: number | null;
+  reasons: string[];
+}
+export const getSignals = (limit = 40): Promise<{ asof: string; signals: Signal[] }> =>
+  req(`/signals?limit=${limit}`);
+
+// ---- Berita + sentimen (tab Berita) ----
+export interface NewsItem {
+  ticker: string;
+  published: string | null;
+  title: string;
+  source: string | null;
+  link: string | null;
+  sent_label: string;
+  sent_score: number | null;
+}
+export interface Mover {
+  ticker: string;
+  avg: number;
+  n: number;
+}
+export const getNews = (
+  ticker?: string,
+  limit = 40,
+): Promise<{ items: NewsItem[]; positif: Mover[]; negatif: Mover[] }> =>
+  req(`/news?limit=${limit}${ticker ? `&ticker=${encodeURIComponent(ticker)}` : ""}`);
+
+// ---- Harga (tab Chart) ----
+export interface Bar {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+export interface Prices {
+  ticker: string;
+  days: number;
+  last: number;
+  chg_pct: number | null;
+  series: Bar[];
+  levels: { ma20?: number; ma50?: number; stop?: number; target?: number };
+  signal: { action: string; score: number; rsi: number; sent: number; n_news: number } | null;
+}
+export const getPrices = (ticker: string, days = 90): Promise<Prices> =>
+  req(`/prices?ticker=${encodeURIComponent(ticker)}&days=${days}`);
