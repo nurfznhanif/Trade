@@ -122,3 +122,14 @@ export interface Prices {
 }
 export const getPrices = (ticker: string, days = 90): Promise<Prices> =>
   req(`/prices?ticker=${encodeURIComponent(ticker)}&days=${days}`);
+
+// ---- Angka makro/komoditas (strip di card Makro) ----
+export interface MacroItem {
+  ticker: string;
+  label: string;
+  unit: string; // "$" prefix, "%" suffix, atau ""
+  last: number;
+  chg: number;
+  date: string;
+}
+export const getMacro = (): Promise<{ items: MacroItem[] }> => req("/macro");

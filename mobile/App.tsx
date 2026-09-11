@@ -31,11 +31,13 @@ import {
   API_BASE,
   getAnalysis,
   getLlmConfig,
+  getMacro,
   getNews,
   getPrices,
   getSignals,
   loadApiBase,
   LlmInfo,
+  MacroItem,
   Mover,
   NewsItem,
   Prices,
@@ -70,12 +72,17 @@ export default function App() {
   const [data, setData] = useState<Analysis>(sampleAnalysis);
   const [live, setLive] = useState(false);
   const [note, setNote] = useState("");
+  const [macro, setMacro] = useState<MacroItem[]>([]);
 
-  // ambil analisa terbaru dari backend pas app dibuka (pakai alamat tersimpan)
-  const loadLive = () =>
+  // ambil analisa + angka makro dari backend pas app dibuka (pakai alamat tersimpan)
+  const loadLive = () => {
     getAnalysis()
       .then((a) => { setData(a); setLive(true); setNote(""); })
       .catch(() => setNote("Backend belum nyambung — nampilin data sampel. Set alamat di Pengaturan."));
+    getMacro()
+      .then((m) => setMacro(m.items))
+      .catch(() => setMacro([]));
+  };
 
   useEffect(() => {
     loadApiBase().then(loadLive);
@@ -114,30 +121,13 @@ export default function App() {
           <Text style={styles.logo}>
             TRADE <Text style={styles.logoAccent}>IDX</Text>
           </Text>
-          <View style={styles.headerRight}>
-            <View
-              style={[
-                styles.regimePill,
-                { borderColor: regime === "RISK-OFF" ? "#ef4444" : "#22c55e" },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.regimeText,
-                  { color: regime === "RISK-OFF" ? "#ef4444" : "#22c55e" },
-                ]}
-              >
-                {regime}
-              </Text>
-            </View>
-            <Pressable onPress={() => setNav("pengaturan")} hitSlop={8}>
-              <Ionicons
-                name="settings-outline"
-                size={22}
-                color={nav === "pengaturan" ? "#2dd4bf" : "#7d8792"}
-              />
-            </Pressable>
-          </View>
+          <Pressable onPress={() => setNav("pengaturan")} hitSlop={8}>
+            <Ionicons
+              name="settings-outline"
+              size={22}
+              color={nav === "pengaturan" ? "#2dd4bf" : "#7d8792"}
+            />
+          </Pressable>
         </View>
         <Text style={styles.sub}>
           data {data.generated} · {live ? "LIVE" : "sampel"} · {data.engine}
@@ -148,8 +138,37 @@ export default function App() {
           <>
             {/* Macro */}
             <View style={styles.macroCard}>
-              <Text style={styles.macroLabel}>ANALISIS MAKRO</Text>
+              <View style={styles.macroHead}>
+                <Text style={styles.macroLabel}>ANALISIS MAKRO</Text>
+                <View
+                  style={[
+                    styles.regimePill,
+                    { borderColor: regime === "RISK-OFF" ? "#ef4444" : "#22c55e" },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.regimeText,
+                      { color: regime === "RISK-OFF" ? "#ef4444" : "#22c55e" },
+                    ]}
+                  >
+                    {regime}
+                  </Text>
+                </View>
+              </View>
               <Text style={styles.macroText}>{data.macro}</Text>
+              {macro.length > 0 ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.macroStrip}
+                  contentContainerStyle={styles.macroStripInner}
+                >
+                  {macro.map((m) => (
+                    <MacroTile key={m.ticker} m={m} />
+                  ))}
+                </ScrollView>
+              ) : null}
             </View>
 
             {/* Tombol Analisa */}
@@ -564,6 +583,30 @@ function StatTile({ n, label, color }: { n: number; label: string; color: string
   );
 }
 
+// angka makro: >=1000 -> ribuan pakai titik (17.531); <1000 -> 2 desimal koma (98,73)
+function fmtMacro(n: number): string {
+  if (n >= 1000) return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return n.toFixed(2).replace(".", ",");
+}
+
+function MacroTile({ m }: { m: MacroItem }) {
+  const col = m.chg > 0 ? "#22c55e" : m.chg < 0 ? "#ef4444" : "#7d8792";
+  return (
+    <View style={styles.macroTile}>
+      <Text style={styles.macroTileLabel}>{m.label}</Text>
+      <Text style={styles.macroTileVal}>
+        {m.unit === "$" ? "$" : ""}
+        {fmtMacro(m.last)}
+        {m.unit === "%" ? "%" : ""}
+      </Text>
+      <Text style={[styles.macroTileChg, { color: col }]}>
+        {m.chg >= 0 ? "+" : ""}
+        {m.chg}%
+      </Text>
+    </View>
+  );
+}
+
 function CallCard({ c }: { c: Call }) {
   const bar = c.flag ? flagColor[c.flag] : actionColor(c.action);
   const toTarget = pct(c.entry, c.target);
@@ -769,8 +812,15 @@ const styles = StyleSheet.create({
   sub: { color: "#7d8792", fontSize: 12, marginTop: 4 },
 
   macroCard: { backgroundColor: "#121821", borderRadius: 14, padding: 14, marginTop: 14, borderWidth: 1, borderColor: "#1e2731" },
-  macroLabel: { color: "#2dd4bf", fontSize: 11, fontWeight: "800", letterSpacing: 1, marginBottom: 6 },
+  macroHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
+  macroLabel: { color: "#2dd4bf", fontSize: 11, fontWeight: "800", letterSpacing: 1 },
   macroText: { color: "#c2cbd4", fontSize: 13, lineHeight: 19 },
+  macroStrip: { marginTop: 12, marginHorizontal: -2 },
+  macroStripInner: { gap: 8, paddingHorizontal: 2 },
+  macroTile: { backgroundColor: "#0e141b", borderRadius: 10, borderWidth: 1, borderColor: "#1e2731", paddingHorizontal: 11, paddingVertical: 8, minWidth: 82 },
+  macroTileLabel: { color: "#7d8792", fontSize: 10, fontWeight: "700", letterSpacing: 0.3 },
+  macroTileVal: { color: "#e6edf3", fontSize: 15, fontWeight: "800", marginTop: 3 },
+  macroTileChg: { fontSize: 11, fontWeight: "700", marginTop: 2 },
 
   btn: { backgroundColor: "#2dd4bf", borderRadius: 14, paddingVertical: 15, alignItems: "center", marginTop: 16 },
   btnPressed: { opacity: 0.8 },

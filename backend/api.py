@@ -182,6 +182,40 @@ def get_prices(ticker: str, days: int = 90):
     }
 
 
+# label + unit buat tiap ticker makro (urutan = urutan tampil di app)
+MACRO_LABELS = {
+    "GC=F": ("Emas", "$"),
+    "IDR=X": ("USD/IDR", ""),
+    "^JKSE": ("IHSG", ""),
+    "CL=F": ("Minyak", "$"),
+    "DX-Y.NYB": ("DXY", ""),
+    "^TNX": ("US 10Y", "%"),
+    "^VIX": ("VIX", ""),
+}
+
+
+@app.get("/macro")
+def get_macro():
+    """Angka makro/komoditas harian + perubahan (buat strip di card Makro)."""
+    conn = db()
+    try:
+        out = []
+        for tk, (label, unit) in MACRO_LABELS.items():
+            rows = conn.execute(
+                "SELECT date,close FROM macro WHERE ticker=? ORDER BY date DESC LIMIT 2", (tk,)
+            ).fetchall()
+            if not rows:
+                continue
+            last = rows[0]["close"]
+            prev = rows[1]["close"] if len(rows) > 1 else last
+            chg = round((last / prev - 1) * 100, 2) if prev else 0.0
+            out.append({"ticker": tk, "label": label, "unit": unit,
+                        "last": last, "chg": chg, "date": rows[0]["date"]})
+    finally:
+        conn.close()
+    return {"items": out}
+
+
 # ---------------------------------------------------------------- config LLM
 class LLMConfig(BaseModel):
     provider: str
