@@ -5,9 +5,10 @@ Pakai (jalanin pas mau pakai app):
 
 Skrip ini:
   1. nyalain backend FastAPI di :8000
-  2. nyalain tunnel cloudflared -> URL publik
-  3. NYETAK URL-nya (tempel di app: Pengaturan -> Alamat Backend)
-Tekan Ctrl+C buat matiin dua-duanya.
+  2. NYETAK ALAMAT RUMAH (LAN IP :8000) — TETAP, buat HP & PC satu WiFi
+  3. nyalain tunnel cloudflared -> URL publik (buat di luar rumah)
+  4. NYETAK dua-duanya (tempel di app: Pengaturan -> Alamat Backend)
+Tekan Ctrl+C buat matiin.
 
 Butuh cloudflared di tools/cloudflared.exe (download sekali:
   https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe)
@@ -15,6 +16,7 @@ Butuh cloudflared di tools/cloudflared.exe (download sekali:
 from __future__ import annotations
 
 import re
+import socket
 import subprocess
 import sys
 import threading
@@ -25,6 +27,18 @@ BASE = Path(__file__).resolve().parent.parent
 CF = BASE / "tools" / "cloudflared.exe"
 
 
+def lan_ip() -> str | None:
+    """IP LAN utama PC (mis. 192.168.x.x) — alamat backend yang TETAP di rumah."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))   # gak beneran ngirim; cuma nentuin rute keluar
+        return s.getsockname()[0]
+    except OSError:
+        return None
+    finally:
+        s.close()
+
+
 def main() -> None:
     procs: list[subprocess.Popen] = []
 
@@ -33,6 +47,13 @@ def main() -> None:
         [sys.executable, "-m", "uvicorn", "backend.api:app", "--host", "0.0.0.0", "--port", "8000"],
         cwd=str(BASE)))
     time.sleep(3)
+
+    ip = lan_ip()
+    if ip:
+        print("\n" + "=" * 60)
+        print("  ALAMAT RUMAH (HP & PC satu WiFi) — TETAP, gak berubah:")
+        print(f"  http://{ip}:8000")
+        print("=" * 60 + "\n")
 
     if not CF.exists():
         print(f"! cloudflared gak ketemu di {CF}")
@@ -60,7 +81,7 @@ def main() -> None:
 
         if "url" in found:
             print("\n" + "=" * 60)
-            print("  ALAMAT BACKEND — tempel di app (Pengaturan → Alamat Backend):")
+            print("  ALAMAT LUAR (beda WiFi/kuota) — BERUBAH tiap restart:")
             print("  " + found["url"])
             print("=" * 60 + "\n")
         else:
