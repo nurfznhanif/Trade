@@ -7,24 +7,6 @@ from __future__ import annotations
 import yfinance as yf
 
 
-def fetch_prices(ticker: str, period: str = "6mo", interval: str = "1d") -> list[tuple]:
-    """Ambil OHLCV. Return list of (date, open, high, low, close, volume)."""
-    t = yf.Ticker(ticker)
-    df = t.history(period=period, interval=interval, auto_adjust=False)
-
-    rows: list[tuple] = []
-    for idx, row in df.iterrows():
-        rows.append((
-            idx.date().isoformat(),
-            _f(row.get("Open")),
-            _f(row.get("High")),
-            _f(row.get("Low")),
-            _f(row.get("Close")),
-            _i(row.get("Volume")),
-        ))
-    return rows
-
-
 def fetch_prices_batch(tickers, period: str = "6mo", interval: str = "1d") -> dict[str, list[tuple]]:
     """Tarik banyak ticker sekaligus (batch download yfinance).
 
