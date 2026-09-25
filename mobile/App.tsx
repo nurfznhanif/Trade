@@ -1669,7 +1669,7 @@ const styles = StyleSheet.create({
   macroCard: { backgroundColor: "#121821", borderRadius: 14, padding: 14, marginTop: 14, borderWidth: 1, borderColor: "#1e2731" },
   macroHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
   macroLabel: { color: "#2dd4bf", fontSize: 11, fontWeight: "800", letterSpacing: 1 },
-  macroText: { color: "#c2cbd4", fontSize: 14, lineHeight: 21 },
+  macroText: { color: "#c2cbd4", fontSize: 14, lineHeight: 21, textAlign: "justify" },
   macroPara: { marginTop: 10 },
   macroMoreBtn: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", marginTop: 8 },
   macroMore: { color: "#2dd4bf", fontSize: 13, fontWeight: "700" },
