@@ -271,7 +271,7 @@ def main() -> None:
     ap.add_argument("--modal", help="mis. 100jt / 1500000 / 1,5juta")
     ap.add_argument("--risk", type=float, default=0.02, help="risiko per trade (default 0.02)")
     ap.add_argument("--out", default=str(BASE / "data" / "analysis_gemini.json"))
-    ap.add_argument("--provider", help="override LLM_PROVIDER (gemini/deepseek/openai/groq/openrouter/ollama/custom)")
+    ap.add_argument("--provider", help="override LLM_PROVIDER (deepseek/gemini/openai)")
     ap.add_argument("--model", help="override LLM_MODEL")
     ap.add_argument("--refresh", action="store_true", help="jalanin daily.py dulu")
     ap.add_argument("--list-models", action="store_true", help="daftar model provider aktif")

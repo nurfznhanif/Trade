@@ -465,13 +465,12 @@ def set_llm(cfg: LLMConfig):
     if cur and env.get("LLM_API_KEY") and not env.get(_key_name(cur)):
         upd[_key_name(cur)] = env["LLM_API_KEY"]   # migrasi: key lama jangan ilang pas ganti provider
     key = (cfg.api_key or "").strip() or _saved_key(env, cfg.provider)
-    if not key and cfg.provider != "ollama":
+    if not key:
         raise HTTPException(400, f"API key {p['label']} belum ada.")
     if cfg.api_key and cfg.api_key.strip():
         upd[_key_name(cfg.provider)] = cfg.api_key.strip()
     upd["LLM_API_KEY"] = key
-    # base URL cuma buat custom; provider lain balik ke URL bawaannya
-    upd["LLM_BASE_URL"] = (cfg.base_url or "") if cfg.provider == "custom" else ""
+    upd["LLM_BASE_URL"] = ""   # semua provider pakai URL bawaannya
     write_env(upd)
     return {"ok": True}
 
@@ -501,10 +500,7 @@ def _env_for(provider: str, model: str | None, api_key: str | None, base_url: st
         env["LLM_MODEL"] = model
     if api_key:
         env[_key_name(provider)] = env["LLM_API_KEY"] = api_key
-    if base_url is not None:
-        env["LLM_BASE_URL"] = base_url
-    elif provider != "custom":
-        env["LLM_BASE_URL"] = ""
+    env["LLM_BASE_URL"] = base_url or ""
     return env
 
 
@@ -545,12 +541,12 @@ class ModelsQuery(BaseModel):
 @app.post("/config/llm/models")
 def llm_models(q: ModelsQuery):
     """Daftar model chat ASLI dari provider (pakai key, udah disaring llm.chat_models) — biar dropdown
-    gak basi pas model lama dipensiunkan. Tanpa key / gagal / kegedean (>40, mis. OpenRouter) -> bawaan."""
+    gak basi pas model lama dipensiunkan. Tanpa key / gagal / kegedean (>40) -> bawaan."""
     p = llm.PROVIDERS.get(q.provider)
     if not p:
         raise HTTPException(400, "Provider gak dikenal.")
     env = _env_for(q.provider, None, q.api_key, q.base_url)
-    live = llm.list_models(env) if (llm.resolve(env)["key"] or q.provider == "ollama") else []
+    live = llm.list_models(env) if llm.resolve(env)["key"] else []
     if 0 < len(live) <= 40:
         return {"models": live, "live": True}
     return {"models": p["models"], "live": False}

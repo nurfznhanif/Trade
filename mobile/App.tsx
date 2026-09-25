@@ -1276,7 +1276,6 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
   const [prov, setProv] = useState("");
   const [model, setModel] = useState("");
   const [key, setKey] = useState("");
-  const [baseUrl, setBaseUrl] = useState("");
   const [base, setBase] = useState(API_BASE);
   const [tok, setTok] = useState(API_TOKEN);
   const [showConn, setShowConn] = useState(false);
@@ -1324,7 +1323,7 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
   const loadConfig = (cek = true) =>
     getLlmConfig()
       .then((i) => {
-        setInfo(i); setProv(i.provider); setModel(i.model); setBaseUrl(i.base_url);
+        setInfo(i); setProv(i.provider); setModel(i.model);
         provRef.current = i.provider;
         fetchModels(i.provider);
         if (cek) checkActive();
@@ -1355,11 +1354,11 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
   if (!live && info && prov === info.provider && info.model && !models.includes(info.model)) models.unshift(info.model);
   const modelOpts = models.map((m) => ({ value: m, label: m }));
   const hasKey = !!info?.keys?.[prov];
-  const needKey = prov !== "" && prov !== "ollama";
+  const needKey = prov !== "";
   const active = !!info && prov === info.provider && model === info.model;   // pilihan = yang lagi dipakai
   const showBar = !!info && (editing || !active);   // bar API key + tombol Cek
   const showSave = showBar;
-  const sig = `${prov}|${model.trim()}|${key.trim()}|${prov === "custom" ? baseUrl.trim() : ""}`;
+  const sig = `${prov}|${model.trim()}|${key.trim()}`;
   const chk = check && check.sig === sig ? check : null;   // ganti apa pun -> wajib Cek ulang
   const savedKeys = info ? Object.keys(info.keys || {}).filter((k) => info.keys[k]) : [];
 
@@ -1386,7 +1385,6 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
     provider: prov,
     model: model.trim(),
     api_key: key.trim() || undefined,
-    base_url: prov === "custom" ? baseUrl.trim() : undefined,
   });
 
   // tombol Cek: sambungin provider/model/key yang dipilih (belum disimpan)
@@ -1451,8 +1449,6 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
   } else if (chk) {
     rowDot = chk.ok ? GREEN : RED;
     rowText = chk.ok ? `Tersambung — ${label} / ${model} · tinggal Simpan` : `Gagal nyambung — ${chk.text}`;
-  } else if (!needKey) {
-    rowDot = GREY; rowText = `${label} gak butuh API key — klik Cek`;
   } else if (hasKey && !key.trim()) {
     rowDot = GREEN; rowText = `API key ${label} tersimpan${showBar ? " — klik Cek" : ""}`;
   }
@@ -1504,17 +1500,9 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
             placeholder="nama model" placeholderTextColor="#56606c" />
         </>
       ) : null}
-      {prov === "custom" ? (
-        <>
-          <Text style={styles.settLabel}>Base URL</Text>
-          <TextInput style={styles.input} value={baseUrl} onChangeText={setBaseUrl}
-            autoCapitalize="none" autoCorrect={false}
-            placeholder="https://…/v1" placeholderTextColor="#56606c" />
-        </>
-      ) : null}
       {prov ? (
         <>
-          <Text style={styles.settLabel}>{needKey ? "API Key" : "Koneksi"}</Text>
+          <Text style={styles.settLabel}>API Key</Text>
           <View style={[styles.connRow, styles.connRowField]}>
             <View style={[styles.jDot, { backgroundColor: rowDot }]} />
             <Text style={styles.connText}>{rowText}</Text>
@@ -1526,14 +1514,10 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
           </View>
           {showBar ? (
             <View style={styles.keyBar}>
-              {needKey ? (
-                <TextInput style={[styles.input, styles.keyBarInput]} value={key} onChangeText={setKey} secureTextEntry
-                  autoCapitalize="none" autoCorrect={false}
-                  placeholder={hasKey ? "key baru (kosongin = pakai yang tersimpan)" : `tempel API key ${label}`}
-                  placeholderTextColor="#56606c" />
-              ) : (
-                <View style={styles.flex1} />
-              )}
+              <TextInput style={[styles.input, styles.keyBarInput]} value={key} onChangeText={setKey} secureTextEntry
+                autoCapitalize="none" autoCorrect={false}
+                placeholder={hasKey ? "key baru (kosongin = pakai yang tersimpan)" : `tempel API key ${label}`}
+                placeholderTextColor="#56606c" />
               <Pressable
                 style={({ pressed }) => [styles.cekBtn, chk?.ok && styles.cekBtnOk, pressed && styles.btnPressed]}
                 onPress={cek}

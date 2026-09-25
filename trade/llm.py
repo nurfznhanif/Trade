@@ -1,14 +1,14 @@
-"""llm.py — lapisan LLM BONGKAR-PASANG. Gak terpaku ke Gemini.
+"""llm.py — lapisan LLM BONGKAR-PASANG: DeepSeek, Gemini, OpenAI (dipilih Bapak, sisanya dihapus Sep 2026).
 
-Dua bentuk API yang menutupi hampir semua provider:
+Dua bentuk API:
   - "gemini"          : Google Generative Language REST
-  - OpenAI-compatible : /chat/completions  (DeepSeek, OpenAI, Groq, OpenRouter, Ollama, custom)
+  - OpenAI-compatible : /chat/completions  (DeepSeek, OpenAI)
 
-Config dibaca dari env (diisi lewat .env / menu dashboard):
-  LLM_PROVIDER  gemini | deepseek | openai | groq | openrouter | ollama | custom
-  LLM_MODEL     nama model
-  LLM_API_KEY   API key (buat gemini boleh fallback ke GEMINI_API_KEY)
-  LLM_BASE_URL  override base URL (wajib buat 'custom')
+Config dibaca dari env (diisi lewat .env / menu dashboard / app):
+  LLM_PROVIDER      deepseek | gemini | openai
+  LLM_MODEL         nama model
+  LLM_KEY_<PROV>    API key per provider (LLM_API_KEY = key provider aktif; gemini boleh GEMINI_API_KEY)
+  LLM_BASE_URL      override base URL (opsional, biasanya kosong)
 """
 from __future__ import annotations
 
@@ -19,29 +19,19 @@ import requests
 
 # preset tiap provider: label, OpenAI-compatible?, base URL, tempat ambil key, contoh model
 PROVIDERS: dict[str, dict] = {
+    "deepseek": {"label": "DeepSeek", "openai": True, "base": "https://api.deepseek.com",
+                 # deepseek-chat/-reasoner DIPENSIUNKAN 24 Jul 2026 (api-docs.deepseek.com)
+                 "key_url": "platform.deepseek.com", "models": ["deepseek-flash", "deepseek-v4-pro"]},
     "gemini": {"label": "Google Gemini", "openai": False,
                "base": "https://generativelanguage.googleapis.com/v1beta",
                "key_url": "aistudio.google.com/apikey",
                # per Sep 2026 (ai.google.dev/gemini-api/docs/models): Google nyaranin 3.8 Flash / 3.5 Flash-Lite
                "models": ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.5-flash",
                           "gemini-flash-latest"]},
-    "deepseek": {"label": "DeepSeek", "openai": True, "base": "https://api.deepseek.com",
-                 # deepseek-chat/-reasoner DIPENSIUNKAN 24 Jul 2026 (api-docs.deepseek.com)
-                 "key_url": "platform.deepseek.com", "models": ["deepseek-flash", "deepseek-v4-pro"]},
     "openai": {"label": "OpenAI", "openai": True, "base": "https://api.openai.com/v1",
                # per Sep 2026 (developers.openai.com/api/docs/pricing) — yang murah dulu
                "key_url": "platform.openai.com/api-keys",
                "models": ["gpt-6-luna", "gpt-5.6-luna", "gpt-5-mini", "gpt-6-sol", "gpt-5.6-terra"]},
-    "groq": {"label": "Groq", "openai": True, "base": "https://api.groq.com/openai/v1",
-             "key_url": "console.groq.com/keys",
-             "models": ["openai/gpt-oss-120b", "llama-3.3-70b-versatile", "openai/gpt-oss-20b", "llama-3.1-8b-instant"]},
-    # katalog OpenRouter ratusan & cepet berubah -> bawaan cuma router otomatisnya
-    "openrouter": {"label": "OpenRouter", "openai": True, "base": "https://openrouter.ai/api/v1",
-                   "key_url": "openrouter.ai/keys", "models": ["openrouter/auto"]},
-    "ollama": {"label": "Ollama (lokal, gratis)", "openai": True, "base": "http://localhost:11434/v1",
-               "key_url": "-", "models": ["llama3.1", "qwen2.5"]},
-    "custom": {"label": "Custom (OpenAI-compatible)", "openai": True, "base": "",
-               "key_url": "-", "models": []},
 }
 
 
@@ -74,7 +64,7 @@ def _post(url: str, headers: dict, body: dict, tries: int = 4) -> requests.Respo
 def generate(prompt: str, env: dict, temperature: float = 0.25, max_tokens: int = 16384) -> str:
     """Panggil LLM aktif, minta JSON. Balikin teks mentah (di-parse pemanggil)."""
     c = resolve(env)
-    if not c["key"] and c["provider"] != "ollama":
+    if not c["key"]:
         raise RuntimeError(f"API key kosong buat provider '{c['provider']}'. Isi LLM_API_KEY di .env / menu.")
     if c["openai"]:
         return _gen_openai(prompt, c, temperature, max_tokens)
@@ -99,7 +89,7 @@ def _gen_gemini(prompt, c, temperature, max_tokens) -> str:
 
 def _gen_openai(prompt, c, temperature, max_tokens) -> str:
     url = f"{c['base'].rstrip('/')}/chat/completions"
-    headers = {"Authorization": f"Bearer {c['key'] or 'ollama'}", "Content-Type": "application/json"}
+    headers = {"Authorization": f"Bearer {c['key']}", "Content-Type": "application/json"}
     body = {"model": c["model"],
             "messages": [{"role": "user", "content": prompt}],
             "temperature": temperature, "max_tokens": max_tokens,
@@ -139,7 +129,7 @@ def list_models(env: dict) -> list[str]:
     try:
         if c["openai"]:
             r = requests.get(f"{c['base'].rstrip('/')}/models",
-                             headers={"Authorization": f"Bearer {c['key'] or 'ollama'}"}, timeout=30)
+                             headers={"Authorization": f"Bearer {c['key']}"}, timeout=30)
             return chat_models(c["provider"], [m["id"] for m in r.json().get("data", [])])
         r = requests.get(f"{c['base']}/models?key={c['key']}&pageSize=1000", timeout=30)
         return chat_models(c["provider"], [m["name"].replace("models/", "") for m in r.json().get("models", [])
@@ -152,13 +142,11 @@ def check_key(env: dict) -> bool | None:
     """Cek API key GRATIS (cuma nanya daftar model, gak nyuruh LLM nulis -> 0 token).
     True = valid, False = ditolak/kosong, None = gak ketahuan (jaringan/server provider)."""
     c = resolve(env)
-    if not c["key"] and c["provider"] != "ollama":
+    if not c["key"]:
         return False
     try:
-        auth = {"Authorization": f"Bearer {c['key'] or 'ollama'}"}
-        if c["provider"] == "openrouter":   # /models OpenRouter gak butuh key -> pakai /auth/key
-            r = requests.get("https://openrouter.ai/api/v1/auth/key", headers=auth, timeout=15)
-        elif c["openai"]:
+        auth = {"Authorization": f"Bearer {c['key']}"}
+        if c["openai"]:
             r = requests.get(f"{c['base'].rstrip('/')}/models", headers=auth, timeout=15)
         else:
             r = requests.get(f"{c['base']}/models?key={c['key']}&pageSize=1", timeout=15)
