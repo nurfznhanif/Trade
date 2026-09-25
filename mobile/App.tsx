@@ -28,13 +28,20 @@ import {
   verdictColor,
 } from "./src/analysis";
 import {
+  addTrade,
   API_BASE,
+  API_TOKEN,
+  closeTrade,
+  deleteTrade,
   getAnalysis,
+  getJournal,
   getLlmConfig,
   getMacro,
   getNews,
   getPrices,
   getSignals,
+  JournalSummary,
+  JournalTrade,
   loadApiBase,
   LlmInfo,
   MacroItem,
@@ -43,6 +50,7 @@ import {
   Prices,
   runAnalisa,
   saveApiBase,
+  saveApiToken,
   setLlmConfig,
   Signal,
   testLlm,
@@ -73,19 +81,29 @@ export default function App() {
   const [live, setLive] = useState(false);
   const [note, setNote] = useState("");
   const [macro, setMacro] = useState<MacroItem[]>([]);
+  const [conn, setConn] = useState<"cari" | "ok" | "mati">("cari");
 
-  // ambil analisa + angka makro dari backend pas app dibuka (pakai alamat tersimpan)
-  const loadLive = () => {
+  // ambil analisa + angka makro dari backend
+  const loadLive = (hit = true) => {
     getAnalysis()
       .then((a) => { setData(a); setLive(true); setNote(""); })
-      .catch(() => setNote("Backend belum nyambung — nampilin data sampel. Set alamat di Pengaturan."));
+      .catch((e) => { setLive(false); setNote(hit ? "Gagal ambil analisa: " + String(e?.message || e) : ""); });
     getMacro()
       .then((m) => setMacro(m.items))
       .catch(() => setMacro([]));
   };
 
+  // cari server di PC otomatis (gak perlu isi alamat), terus muat data
+  const connect = () => {
+    setConn("cari");
+    loadApiBase().then((hit) => {
+      setConn(hit ? "ok" : "mati");
+      loadLive(!!hit);
+    });
+  };
+
   useEffect(() => {
-    loadApiBase().then(loadLive);
+    connect();
   }, []);
 
   const counts = useMemo(() => {
@@ -132,6 +150,8 @@ export default function App() {
         <Text style={styles.sub}>
           data {data.generated} · {live ? "LIVE" : "sampel"} · {data.engine}
         </Text>
+        {conn === "cari" ? <Text style={styles.sub}>Nyari server di PC…</Text> : null}
+        {conn === "mati" ? <OfflineCard onRetry={connect} /> : null}
         {note ? <Text style={styles.note}>{note}</Text> : null}
 
         {nav === "analisa" && (
@@ -221,25 +241,16 @@ export default function App() {
           </>
         )}
 
-        {nav === "jurnal" && (
-          <>
-            <Text style={[styles.sectionTitle, { marginTop: 18 }]}>POSISI TERBUKA</Text>
-            {data.positions && data.positions.length > 0 ? (
-              data.positions.map((p) => <PositionCard key={p.ticker} p={p} />)
-            ) : (
-              <Text style={styles.footer}>Belum ada posisi terbuka.</Text>
-            )}
-          </>
-        )}
+        {nav === "jurnal" && <JournalScreen data={data} />}
 
         {nav === "sinyal" && <SignalsScreen />}
         {nav === "berita" && <NewsScreen />}
         {nav === "chart" && <ChartScreen data={data} />}
 
-        {nav === "pengaturan" && <SettingsScreen onConnected={loadLive} />}
+        {nav === "pengaturan" && <SettingsScreen onConnected={connect} />}
 
         <Text style={styles.footer}>
-          Trade IDX · {live ? "tersambung backend" : `backend: ${API_BASE}`}
+          Trade IDX · {conn === "ok" ? `tersambung ke server (${API_BASE})` : "belum tersambung ke server"}
         </Text>
       </ScrollView>
 
@@ -299,9 +310,29 @@ function ErrBox({ msg }: { msg: string }) {
   return (
     <View style={styles.soon}>
       <Ionicons name="cloud-offline-outline" size={40} color="#56606c" />
-      <Text style={styles.soonTitle}>Backend belum nyambung</Text>
+      <Text style={styles.soonTitle}>Server belum nyambung</Text>
       <Text style={styles.soonDesc}>{msg || "Gagal ambil data."}</Text>
-      <Text style={styles.soonDesc}>Set alamat backend di menu Pengaturan (ikon gerigi kanan atas).</Text>
+      <Text style={styles.soonDesc}>Cek internet HP. Kalau pakai server di PC: double-klik run_backend.bat.</Text>
+    </View>
+  );
+}
+
+// kartu pas server di PC gak ketemu — jelasin langkahnya + tombol coba lagi
+function OfflineCard({ onRetry }: { onRetry: () => void }) {
+  return (
+    <View style={styles.offCard}>
+      <View style={styles.offHead}>
+        <Ionicons name="desktop-outline" size={17} color="#f59e0b" />
+        <Text style={styles.offTitle}>Server belum nyambung</Text>
+      </View>
+      <Text style={styles.offDesc}>
+        Cek internet HP, lalu ketuk Sambung ulang. Kalau pakai server di PC: double-klik{" "}
+        <Text style={styles.offCode}>run_backend.bat</Text> dulu. Sementara ini yang tampil data sampel.
+      </Text>
+      <Pressable style={({ pressed }) => [styles.offBtn, pressed && styles.btnPressed]} onPress={onRetry}>
+        <Ionicons name="refresh" size={15} color="#f59e0b" />
+        <Text style={styles.offBtnText}>Sambung ulang</Text>
+      </Pressable>
     </View>
   );
 }
@@ -660,17 +691,445 @@ function Level({ label, val, sub, subColor }: { label: string; val: string; sub?
   );
 }
 
-function PositionCard({ p }: { p: Position }) {
-  const col = verdictColor(p.verdict);
+// ============================ TAB JURNAL ============================
+// tanggal lokal hari ini "2026-09-25" (default tgl beli/jual)
+function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// "6.500" / "6500" -> 6500 ; kosong -> null
+function num(s: string): number | null {
+  const c = s.replace(/[^\d,]/g, "").replace(",", ".");
+  return c ? Number(c) : null;
+}
+
+function rpSigned(n: number | null | undefined): string {
+  if (n == null) return "–";
+  return (n > 0 ? "+" : n < 0 ? "-" : "") + "Rp" + fmtInt(Math.abs(n));
+}
+
+function pctSigned(x: number | null | undefined): string {
+  if (x == null) return "–";
+  return (x > 0 ? "+" : "") + (x * 100).toFixed(1) + "%";
+}
+
+const plColor = (n: number | null | undefined) =>
+  n == null || n === 0 ? "#7d8792" : n > 0 ? "#22c55e" : "#ef4444";
+
+// "2026-09-15" -> "15 Sep"
+function fmtDay(iso: string | null): string {
+  if (!iso) return "–";
+  const d = new Date(iso.slice(0, 10) + "T00:00:00");
+  return isNaN(+d) ? iso : d.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+}
+
+function daysSince(iso: string): number {
+  return Math.max(0, Math.floor((Date.now() - +new Date(iso.slice(0, 10) + "T00:00:00")) / 86400000));
+}
+
+function JournalScreen({ data }: { data: Analysis }) {
+  const [j, setJ] = useState<{ trades: JournalTrade[]; summary: JournalSummary } | null>(null);
+  const [err, setErr] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  // reload tanpa ngosongin layar (data lama tetap nongol selama ngambil)
+  const load = () =>
+    getJournal()
+      .then((d) => { setJ(d); setErr(""); })
+      .catch((e) => setErr(String(e?.message || e)));
+
+  useEffect(() => { load(); }, []);
+
+  if (!j && !err) return <Loading />;
+  if (!j) return <ErrBox msg={err} />;
+
+  const open = j.trades.filter((t) => t.status === "open");
+  const closed = j.trades.filter((t) => t.status === "closed");
+  const verdicts = new Map((data.positions || []).map((p) => [p.ticker, p]));
+
   return (
-    <View style={[styles.posCard, { borderLeftColor: col }]}>
-      <View style={styles.cardTop}>
-        <Text style={styles.ticker}>{p.ticker.replace(".JK", "")}</Text>
-        <View style={[styles.badge, { backgroundColor: col + "22", borderColor: col }]}>
-          <Text style={[styles.badgeText, { color: col }]}>{p.verdict}</Text>
-        </View>
+    <>
+      <View style={styles.secHead}>
+        <Text style={styles.sectionTitle}>JURNAL REAL</Text>
+        <Text style={styles.secSub}>catatan beli-jual beneran di broker</Text>
       </View>
-      <Text style={styles.reason}>{p.reason}</Text>
+      {err ? <Text style={styles.note}>{err}</Text> : null}
+
+      {j.trades.length > 0 ? <JournalSummaryCard s={j.summary} /> : null}
+
+      {adding ? (
+        <AddTradeForm
+          calls={data.calls}
+          onDone={() => { setAdding(false); load(); }}
+          onCancel={() => setAdding(false)}
+        />
+      ) : (
+        <Pressable
+          style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
+          onPress={() => setAdding(true)}
+        >
+          <View style={styles.btnRow}>
+            <Ionicons name="add-circle-outline" size={18} color="#04110d" />
+            <Text style={styles.btnText}>CATAT BELI</Text>
+          </View>
+        </Pressable>
+      )}
+
+      {j.trades.length === 0 && !adding ? (
+        <View style={styles.soon}>
+          <Ionicons name="book-outline" size={40} color="#56606c" />
+          <Text style={styles.soonTitle}>Jurnal masih kosong</Text>
+          <Text style={styles.soonDesc}>
+            Catat saham yang udah dibeli di broker — untung-ruginya kehitung otomatis dari harga penutupan.
+          </Text>
+        </View>
+      ) : null}
+
+      {open.length > 0 ? <Text style={styles.sectionTitle}>POSISI TERBUKA · {open.length}</Text> : null}
+      {open.map((t) => (
+        <OpenTradeCard key={t.id} t={t} verdict={verdicts.get(t.ticker)} onChanged={load} />
+      ))}
+
+      {closed.length > 0 ? <Text style={styles.sectionTitle}>RIWAYAT TERTUTUP · {closed.length}</Text> : null}
+      {closed.map((t) => (
+        <ClosedTradeCard key={t.id} t={t} onChanged={load} />
+      ))}
+    </>
+  );
+}
+
+function JournalSummaryCard({ s }: { s: JournalSummary }) {
+  return (
+    <View style={styles.jSum}>
+      <Text style={styles.jSumLabel}>TOTAL UNTUNG / RUGI</Text>
+      <Text style={[styles.jSumTotal, { color: plColor(s.total) }]}>{rpSigned(s.total)}</Text>
+      <View style={styles.metricRow}>
+        <Metric label="Realized" val={rpSigned(s.realized)} color={plColor(s.realized)} />
+        <Metric label="Floating" val={rpSigned(s.unreal)} color={plColor(s.unreal)} />
+        <Metric
+          label="Win rate"
+          val={s.closed ? `${Math.round(s.win_rate * 100)}% · ${s.wins}/${s.closed}` : "–"}
+        />
+      </View>
+    </View>
+  );
+}
+
+function Field({
+  label, value, onChange, placeholder, numeric, caps,
+}: {
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string;
+  numeric?: boolean; caps?: boolean;
+}) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TextInput
+        style={[styles.input, styles.fieldInput]}
+        value={value}
+        onChangeText={onChange}
+        placeholder={placeholder}
+        placeholderTextColor="#56606c"
+        keyboardType={numeric ? "numeric" : "default"}
+        autoCapitalize={caps ? "characters" : "none"}
+        autoCorrect={false}
+      />
+    </View>
+  );
+}
+
+function ActBtn({
+  icon, label, onPress, danger,
+}: { icon: IconName; label: string; onPress: () => void; danger?: boolean }) {
+  const c = danger ? "#ef4444" : "#c2cbd4";
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.actBtn, danger && styles.actBtnDanger, pressed && styles.btnPressed]}
+    >
+      <Ionicons name={icon} size={15} color={c} />
+      <Text style={[styles.actBtnText, { color: c }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function AddTradeForm({
+  calls, onDone, onCancel,
+}: { calls: Call[]; onDone: () => void; onCancel: () => void }) {
+  const picks = calls.filter((c) => c.action.startsWith("BELI") && c.entry);
+  const blank = { ticker: "", entry: "", lot: "1", stop: "", target: "", date: todayIso(), thesis: "" };
+  const [f, setF] = useState(blank);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const set = (k: keyof typeof blank) => (v: string) => setF((o) => ({ ...o, [k]: v }));
+
+  // isi otomatis dari saran analisa hari ini (harga tinggal disesuaiin sama harga nyata di broker)
+  const pick = (c: Call) =>
+    setF({
+      ticker: c.ticker.replace(".JK", ""),
+      entry: c.entry != null ? String(c.entry) : "",
+      lot: String(c.lot || 1),
+      stop: c.stop != null ? String(c.stop) : "",
+      target: c.target != null ? String(c.target) : "",
+      date: todayIso(),
+      thesis: `Ikut saran analisa (${c.action})`,
+    });
+
+  const entry = num(f.entry);
+  const lot = num(f.lot);
+  const value = entry && lot ? entry * lot * 100 : null;
+
+  const save = () => {
+    if (!f.ticker.trim()) return setMsg("Isi kode saham dulu.");
+    if (!entry || !lot) return setMsg("Harga beli & jumlah lot wajib diisi.");
+    if (!Number.isInteger(lot)) return setMsg("Lot harus bilangan bulat (1 lot = 100 lembar).");
+    setBusy(true);
+    setMsg("");
+    addTrade({
+      ticker: f.ticker.trim(),
+      entry,
+      lot,
+      stop: num(f.stop),
+      target: num(f.target),
+      thesis: f.thesis.trim() || null,
+      entry_date: f.date.trim() || null,
+    })
+      .then(onDone)
+      .catch((e) => setMsg(String(e?.message || e)))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <View style={styles.formCard}>
+      <View style={styles.cardTop}>
+        <Text style={styles.formTitle}>Catat Beli</Text>
+        <Pressable onPress={onCancel} hitSlop={8}>
+          <Ionicons name="close" size={20} color="#7d8792" />
+        </Pressable>
+      </View>
+
+      {picks.length > 0 ? (
+        <>
+          <Text style={styles.fieldLabel}>DARI SARAN ANALISA HARI INI</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipScrollInner}>
+            {picks.map((c) => {
+              const on = f.ticker === c.ticker.replace(".JK", "");
+              return (
+                <Pressable key={c.ticker} onPress={() => pick(c)} style={[styles.chip, on && styles.chipOn]}>
+                  <Text style={[styles.chipText, on && styles.chipTextOn]}>
+                    {c.ticker.replace(".JK", "")} · {fmtInt(c.entry)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </>
+      ) : null}
+
+      <View style={styles.formRow}>
+        <Field label="Kode" value={f.ticker} onChange={set("ticker")} placeholder="BBCA" caps />
+        <Field label="Harga beli" value={f.entry} onChange={set("entry")} placeholder="6500" numeric />
+        <Field label="Lot" value={f.lot} onChange={set("lot")} placeholder="1" numeric />
+      </View>
+      <View style={styles.formRow}>
+        <Field label="Stop" value={f.stop} onChange={set("stop")} placeholder="opsional" numeric />
+        <Field label="Target" value={f.target} onChange={set("target")} placeholder="opsional" numeric />
+        <Field label="Tgl beli" value={f.date} onChange={set("date")} placeholder={todayIso()} />
+      </View>
+      <View style={styles.formRow}>
+        <Field label="Alasan beli" value={f.thesis} onChange={set("thesis")} placeholder="opsional" />
+      </View>
+
+      {value ? <Text style={styles.hint}>Nilai posisi ~Rp{fmtInt(value)}</Text> : null}
+      {msg ? <Text style={styles.formErr}>{msg}</Text> : null}
+
+      <View style={styles.jBtns}>
+        <Pressable style={[styles.settBtn, styles.settBtnPri]} onPress={save} disabled={busy}>
+          <Text style={styles.settBtnPriText}>{busy ? "…" : "Simpan"}</Text>
+        </Pressable>
+        <Pressable style={[styles.settBtn, styles.settBtnGhost]} onPress={onCancel} disabled={busy}>
+          <Text style={styles.settBtnGhostText}>Batal</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function OpenTradeCard({
+  t, verdict, onChanged,
+}: { t: JournalTrade; verdict?: Position; onChanged: () => void }) {
+  const [mode, setMode] = useState<"" | "close" | "delete">("");
+  const col = plColor(t.pl_rp);
+
+  // posisi harga vs garis jual (trailing stop)
+  let st: { text: string; color: string } | null = null;
+  if (t.px != null && t.trail != null) {
+    const cushion = ((t.px - t.trail) / t.px) * 100;
+    st =
+      t.px < t.trail
+        ? { text: "Tembus garis jual — evaluasi keluar", color: "#ef4444" }
+        : cushion < 3
+        ? { text: `Waspada — tinggal ${cushion.toFixed(1)}% di atas garis jual`, color: "#f59e0b" }
+        : { text: `Aman — ${cushion.toFixed(1)}% di atas garis jual`, color: "#22c55e" };
+  }
+  const vc = verdict ? verdictColor(verdict.verdict) : "";
+
+  return (
+    <View style={[styles.card, { borderLeftColor: col }]}>
+      <View style={styles.cardTop}>
+        <View style={styles.sigLeft}>
+          <Text style={styles.ticker}>{t.ticker.replace(".JK", "")}</Text>
+          {verdict ? (
+            <View style={[styles.badge, { backgroundColor: vc + "22", borderColor: vc }]}>
+              <Text style={[styles.badgeText, { color: vc }]}>{verdict.verdict}</Text>
+            </View>
+          ) : null}
+        </View>
+        <Text style={[styles.jPct, { color: col }]}>{pctSigned(t.gross_pct)}</Text>
+      </View>
+      <Text style={styles.conviction}>
+        {fmtInt(t.lot)} lot · beli {fmtDay(t.entry_date)} · dipegang {daysSince(t.entry_date)} hari
+      </Text>
+
+      <View style={styles.levels}>
+        <Level label="Modal" val={fmtInt(t.entry)} />
+        <Level label="Harga" val={fmtInt(t.px)} sub={t.px_date ? `close ${fmtDay(t.px_date)}` : undefined} subColor="#7d8792" />
+        <Level label="Garis jual" val={fmtInt(t.trail)} />
+        {t.target != null ? <Level label="Target" val={fmtInt(t.target)} /> : null}
+      </View>
+
+      <View style={styles.jPlRow}>
+        <Text style={styles.jPlLabel}>P/L</Text>
+        <Text style={[styles.jPlVal, { color: col }]}>{rpSigned(t.pl_rp)}</Text>
+      </View>
+      {st ? (
+        <View style={styles.lotRow}>
+          <View style={[styles.jDot, { backgroundColor: st.color }]} />
+          <Text style={[styles.jStatus, { color: st.color }]}>{st.text}</Text>
+        </View>
+      ) : null}
+      {verdict?.reason ? <Text style={styles.reason} numberOfLines={3}>{verdict.reason}</Text> : null}
+      {t.thesis ? <Text style={styles.jThesis}>Alasan: {t.thesis}</Text> : null}
+
+      {mode === "close" ? (
+        <CloseForm t={t} onDone={onChanged} onCancel={() => setMode("")} />
+      ) : mode === "delete" ? (
+        <ConfirmDelete t={t} onDone={onChanged} onCancel={() => setMode("")} />
+      ) : (
+        <View style={styles.jActions}>
+          <ActBtn icon="checkmark-done-outline" label="Tutup posisi" onPress={() => setMode("close")} />
+          <View style={styles.flex1} />
+          <ActBtn icon="trash-outline" label="Hapus" danger onPress={() => setMode("delete")} />
+        </View>
+      )}
+    </View>
+  );
+}
+
+function ClosedTradeCard({ t, onChanged }: { t: JournalTrade; onChanged: () => void }) {
+  const [del, setDel] = useState(false);
+  const col = plColor(t.pl_rp);
+  return (
+    <View style={[styles.card, { borderLeftColor: col }]}>
+      <View style={styles.cardTop}>
+        <Text style={styles.ticker}>{t.ticker.replace(".JK", "")}</Text>
+        <Text style={[styles.jPct, { color: col }]}>{pctSigned(t.gross_pct)}</Text>
+      </View>
+      <Text style={styles.conviction}>
+        {fmtInt(t.lot)} lot · {fmtInt(t.entry)} → {fmtInt(t.exit)} · {fmtDay(t.entry_date)} – {fmtDay(t.exit_date)}
+      </Text>
+      <View style={styles.jPlRow}>
+        <Text style={styles.jPlLabel}>P/L</Text>
+        <Text style={[styles.jPlVal, { color: col }]}>{rpSigned(t.pl_rp)}</Text>
+        <Text style={styles.jNet}>bersih setelah fee {pctSigned(t.net_pct)}</Text>
+      </View>
+      {t.thesis ? <Text style={styles.jThesis}>Alasan: {t.thesis}</Text> : null}
+
+      {del ? (
+        <ConfirmDelete t={t} onDone={onChanged} onCancel={() => setDel(false)} />
+      ) : (
+        <View style={styles.jActions}>
+          <View style={styles.flex1} />
+          <ActBtn icon="trash-outline" label="Hapus" danger onPress={() => setDel(true)} />
+        </View>
+      )}
+    </View>
+  );
+}
+
+function CloseForm({ t, onDone, onCancel }: { t: JournalTrade; onDone: () => void; onCancel: () => void }) {
+  const [px, setPx] = useState(t.px != null ? String(Math.round(t.px)) : "");
+  const [d, setD] = useState(todayIso());
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const exit = num(px);
+  const result = exit ? (exit - t.entry) * t.lot * 100 : null;
+
+  const save = () => {
+    if (!exit) return setMsg("Isi harga jual dulu.");
+    setBusy(true);
+    setMsg("");
+    closeTrade(t.id, exit, d.trim() || null)
+      .then(onDone)
+      .catch((e) => setMsg(String(e?.message || e)))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <View style={styles.jInline}>
+      <Text style={styles.fieldLabel}>TUTUP POSISI — HARGA JUAL NYATA DI BROKER</Text>
+      <View style={styles.formRow}>
+        <Field label="Harga jual" value={px} onChange={setPx} numeric />
+        <Field label="Tgl jual" value={d} onChange={setD} placeholder={todayIso()} />
+      </View>
+      {result != null && exit ? (
+        <Text style={[styles.jPreview, { color: plColor(result) }]}>
+          Hasil: {rpSigned(result)} ({pctSigned(exit / t.entry - 1)})
+        </Text>
+      ) : null}
+      {msg ? <Text style={styles.formErr}>{msg}</Text> : null}
+      <View style={styles.jBtns}>
+        <Pressable style={[styles.settBtn, styles.settBtnPri]} onPress={save} disabled={busy}>
+          <Text style={styles.settBtnPriText}>{busy ? "…" : "Simpan jual"}</Text>
+        </Pressable>
+        <Pressable style={[styles.settBtn, styles.settBtnGhost]} onPress={onCancel} disabled={busy}>
+          <Text style={styles.settBtnGhostText}>Batal</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+// hapus 2 langkah (tap Hapus -> konfirmasi) biar gak kepencet
+function ConfirmDelete({ t, onDone, onCancel }: { t: JournalTrade; onDone: () => void; onCancel: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const del = () => {
+    setBusy(true);
+    setMsg("");
+    deleteTrade(t.id)
+      .then(onDone)
+      .catch((e) => setMsg(String(e?.message || e)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <View style={styles.jInline}>
+      <View style={styles.lotRow}>
+        <Ionicons name="warning-outline" size={16} color="#ef4444" />
+        <Text style={styles.jConfirm}>
+          Hapus catatan {t.ticker.replace(".JK", "")} ({fmtInt(t.lot)} lot @ {fmtInt(t.entry)})? Permanen, gak bisa dibalikin.
+        </Text>
+      </View>
+      {msg ? <Text style={styles.formErr}>{msg}</Text> : null}
+      <View style={styles.jBtns}>
+        <Pressable style={[styles.settBtn, styles.jBtnDanger]} onPress={del} disabled={busy}>
+          <Text style={styles.jBtnDangerText}>{busy ? "…" : "Ya, hapus"}</Text>
+        </Pressable>
+        <Pressable style={[styles.settBtn, styles.settBtnGhost]} onPress={onCancel} disabled={busy}>
+          <Text style={styles.settBtnGhostText}>Batal</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -681,13 +1140,25 @@ function SettingsScreen({ onConnected }: { onConnected: () => void }) {
   const [model, setModel] = useState("");
   const [key, setKey] = useState("");
   const [base, setBase] = useState(API_BASE);
+  const [tok, setTok] = useState(API_TOKEN);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
 
   const loadConfig = () =>
     getLlmConfig()
       .then((i) => { setInfo(i); setProv(i.provider); setModel(i.model); })
-      .catch((e) => setMsg("Backend belum nyambung: " + String(e?.message || e)));
+      .catch((e) => setMsg("Server belum nyambung: " + String(e?.message || e)));
+
+  const autoFind = async () => {
+    setBusy(true); setMsg("Nyari server…");
+    await saveApiToken(tok);
+    loadApiBase()
+      .then((hit) => {
+        if (hit) { setBase(hit); setMsg("Ketemu: " + hit); loadConfig(); onConnected(); }
+        else setMsg("Server gak ketemu. Cek alamat & kunci akses, atau pastikan run_backend.bat jalan di PC.");
+      })
+      .finally(() => setBusy(false));
+  };
 
   useEffect(() => { loadConfig(); }, []);
 
@@ -697,6 +1168,7 @@ function SettingsScreen({ onConnected }: { onConnected: () => void }) {
   const save = async () => {
     setBusy(true); setMsg("");
     await saveApiBase(base);
+    await saveApiToken(tok);
     setLlmConfig({ provider: prov, model: model.trim(), api_key: key.trim() || undefined })
       .then(() => { setMsg("Tersimpan. Provider aktif: " + (pinfo?.label || prov)); setKey(""); loadConfig(); onConnected(); })
       .catch((e) => setMsg("Gagal simpan: " + String(e?.message || e)))
@@ -705,6 +1177,7 @@ function SettingsScreen({ onConnected }: { onConnected: () => void }) {
   const test = async () => {
     setBusy(true); setMsg("Nyoba nyambung…");
     await saveApiBase(base);
+    await saveApiToken(tok);
     testLlm()
       .then((r) => { setMsg(r.message); if (r.ok) { loadConfig(); onConnected(); } })
       .catch((e) => setMsg("Gagal tes: " + String(e?.message || e)))
@@ -713,13 +1186,29 @@ function SettingsScreen({ onConnected }: { onConnected: () => void }) {
 
   return (
     <View style={{ marginTop: 8 }}>
-      <Text style={styles.settTitle}>Pengaturan LLM</Text>
-      <Text style={styles.settSub}>Bongkar-pasang otak analisa — gak terpaku ke Gemini.</Text>
+      <Text style={styles.settTitle}>Pengaturan</Text>
 
-      <Text style={styles.settLabel}>Alamat Backend</Text>
+      <Text style={styles.settSection}>KONEKSI KE SERVER</Text>
+      <Text style={styles.settSub}>
+        App ini cuma layar — data & analisa dikerjain server (cloud, atau PC lewat run_backend.bat).
+        Alamatnya dicari otomatis; isi manual cuma kalau gagal.
+      </Text>
+      <Text style={styles.settLabel}>Alamat Server</Text>
       <TextInput style={styles.input} value={base} onChangeText={setBase}
         autoCapitalize="none" autoCorrect={false}
-        placeholder="http://192.168.x.x:8000" placeholderTextColor="#56606c" />
+        placeholder="https://… atau http://192.168.x.x:8000" placeholderTextColor="#56606c" />
+      <Text style={styles.settLabel}>Kunci Akses</Text>
+      <TextInput style={styles.input} value={tok} onChangeText={setTok} secureTextEntry
+        autoCapitalize="none" autoCorrect={false}
+        placeholder="cuma buat server cloud" placeholderTextColor="#56606c" />
+      <Pressable style={({ pressed }) => [styles.actBtn, styles.findBtn, pressed && styles.btnPressed]}
+        onPress={autoFind} disabled={busy}>
+        <Ionicons name="search" size={14} color="#2dd4bf" />
+        <Text style={[styles.actBtnText, { color: "#2dd4bf" }]}>Cari otomatis</Text>
+      </Pressable>
+
+      <Text style={styles.settSection}>OTAK ANALISA (LLM)</Text>
+      <Text style={styles.settSub}>Bongkar-pasang otak analisa — gak terpaku ke Gemini.</Text>
 
       <Text style={styles.settLabel}>Provider</Text>
       <View style={styles.chips}>
@@ -771,7 +1260,18 @@ const styles = StyleSheet.create({
 
   // Pengaturan (Settings)
   settTitle: { color: "#e6edf3", fontSize: 20, fontWeight: "800" },
-  settSub: { color: "#7d8792", fontSize: 13, marginTop: 3 },
+  settSub: { color: "#7d8792", fontSize: 13, marginTop: 3, lineHeight: 19 },
+  settSection: { color: "#2dd4bf", fontSize: 11, fontWeight: "800", letterSpacing: 1, marginTop: 24 },
+  findBtn: { alignSelf: "flex-start", marginTop: 10, borderColor: "#2dd4bf55" },
+
+  // Kartu "server di PC belum nyala"
+  offCard: { backgroundColor: "rgba(245,158,11,0.08)", borderRadius: 14, padding: 14, marginTop: 12, borderWidth: 1, borderColor: "rgba(245,158,11,0.35)" },
+  offHead: { flexDirection: "row", alignItems: "center", gap: 8 },
+  offTitle: { color: "#fbbf24", fontSize: 14, fontWeight: "800" },
+  offDesc: { color: "#c2cbd4", fontSize: 13, lineHeight: 19, marginTop: 6 },
+  offCode: { color: "#e6edf3", fontWeight: "800" },
+  offBtn: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", marginTop: 10, borderWidth: 1, borderColor: "rgba(245,158,11,0.5)", borderRadius: 9, paddingHorizontal: 12, paddingVertical: 7 },
+  offBtnText: { color: "#f59e0b", fontSize: 12, fontWeight: "800" },
   settLabel: { color: "#8b95a1", fontSize: 11, fontWeight: "700", letterSpacing: 0.5, marginTop: 16, marginBottom: 6 },
   input: { backgroundColor: "#121821", borderWidth: 1, borderColor: "#1e2731", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, color: "#e6edf3", fontSize: 14 },
   hint: { color: "#56606c", fontSize: 11, marginTop: 5 },
@@ -857,7 +1357,6 @@ const styles = StyleSheet.create({
   reason: { color: "#c2cbd4", fontSize: 13, lineHeight: 19, marginTop: 10 },
 
   sectionTitle: { color: "#7d8792", fontSize: 12, fontWeight: "800", letterSpacing: 1, marginTop: 26, marginBottom: 2 },
-  posCard: { backgroundColor: "#121821", borderRadius: 14, padding: 14, marginTop: 12, borderLeftWidth: 4, borderWidth: 1, borderColor: "#1e2731" },
 
   footer: { color: "#4b5560", fontSize: 11, textAlign: "center", marginTop: 28 },
 
@@ -895,6 +1394,36 @@ const styles = StyleSheet.create({
   newsTicker: { fontSize: 11, fontWeight: "800" },
   newsDot: { color: "#3a434e", fontSize: 11 },
   newsSrc: { color: "#7d8792", fontSize: 11 },
+
+  // ---- Jurnal ----
+  jSum: { backgroundColor: "#121821", borderRadius: 14, padding: 14, marginTop: 14, borderWidth: 1, borderColor: "#1e2731" },
+  jSumLabel: { color: "#7d8792", fontSize: 11, fontWeight: "800", letterSpacing: 1 },
+  jSumTotal: { fontSize: 26, fontWeight: "800", marginTop: 4 },
+  jPct: { fontSize: 17, fontWeight: "800" },
+  jPlRow: { flexDirection: "row", alignItems: "baseline", gap: 8, marginTop: 12 },
+  jPlLabel: { color: "#7d8792", fontSize: 11, fontWeight: "700", letterSpacing: 0.5 },
+  jPlVal: { fontSize: 16, fontWeight: "800" },
+  jNet: { color: "#7d8792", fontSize: 11 },
+  jDot: { width: 7, height: 7, borderRadius: 4 },
+  jStatus: { fontSize: 12, fontWeight: "700", flex: 1 },
+  jThesis: { color: "#8b95a1", fontSize: 12, marginTop: 8, fontStyle: "italic" },
+  jActions: { flexDirection: "row", alignItems: "center", marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#1e2731" },
+  actBtn: { flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderColor: "#1e2731", backgroundColor: "#0e141b", borderRadius: 9, paddingHorizontal: 11, paddingVertical: 7 },
+  actBtnDanger: { borderColor: "rgba(239,68,68,0.35)" },
+  actBtnText: { fontSize: 12, fontWeight: "700" },
+  jInline: { marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#1e2731" },
+  jConfirm: { color: "#fca5a5", fontSize: 13, lineHeight: 19, flex: 1 },
+  jPreview: { fontSize: 13, fontWeight: "700", marginTop: 8 },
+  jBtns: { flexDirection: "row", gap: 10, marginTop: 14 },
+  jBtnDanger: { backgroundColor: "#ef4444" },
+  jBtnDangerText: { color: "#fff", fontSize: 14, fontWeight: "800", letterSpacing: 0.5 },
+  formCard: { backgroundColor: "#121821", borderRadius: 14, padding: 14, marginTop: 16, borderWidth: 1, borderColor: "#2dd4bf55" },
+  formTitle: { color: "#e6edf3", fontSize: 17, fontWeight: "800", marginBottom: 10 },
+  formRow: { flexDirection: "row", gap: 8 },
+  field: { flex: 1, minWidth: 0, marginTop: 10 },
+  fieldLabel: { color: "#8b95a1", fontSize: 11, fontWeight: "700", letterSpacing: 0.3, marginBottom: 6 },
+  fieldInput: { width: "100%", paddingHorizontal: 10 },
+  formErr: { color: "#fca5a5", fontSize: 13, marginTop: 10 },
 
   // ---- Chart ----
   chipScroll: { marginTop: 12, marginBottom: 2 },

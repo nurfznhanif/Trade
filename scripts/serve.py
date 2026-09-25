@@ -7,7 +7,8 @@ Skrip ini:
   1. nyalain backend FastAPI di :8000
   2. NYETAK ALAMAT RUMAH (LAN IP :8000) — TETAP, buat HP & PC satu WiFi
   3. nyalain tunnel cloudflared -> URL publik (buat di luar rumah)
-  4. NYETAK dua-duanya (tempel di app: Pengaturan -> Alamat Backend)
+  4. NYETAK dua-duanya + nulis ke mobile/.env.local -> app nyari alamatnya sendiri
+     (isi manual di Pengaturan app cuma kalau gagal)
 Tekan Ctrl+C buat matiin.
 
 Butuh cloudflared di tools/cloudflared.exe (download sekali:
@@ -25,6 +26,20 @@ from pathlib import Path
 
 BASE = Path(__file__).resolve().parent.parent
 CF = BASE / "tools" / "cloudflared.exe"
+APP_ENV = BASE / "mobile" / ".env.local"   # gitignored
+
+
+def write_app_env(rumah: str | None, luar: str | None = None) -> None:
+    """Tulis alamat backend ke mobile/.env.local -> app nyari sendiri, gak perlu isi manual.
+    Dibaca Expo pas bundle, jadi nyalain serve.py SEBELUM `npx expo start`."""
+    lines = ["# Ditulis otomatis oleh scripts/serve.py tiap backend nyala — jangan diedit manual"]
+    if rumah:
+        lines.append(f"EXPO_PUBLIC_API_BASE={rumah}")
+    if luar:
+        lines.append(f"EXPO_PUBLIC_API_BASE_LUAR={luar}")
+    txt = "\n".join(lines) + "\n"
+    if not APP_ENV.exists() or APP_ENV.read_text(encoding="utf-8") != txt:
+        APP_ENV.write_text(txt, encoding="utf-8")
 
 
 def lan_ip() -> str | None:
@@ -49,6 +64,8 @@ def main() -> None:
     time.sleep(3)
 
     ip = lan_ip()
+    rumah = f"http://{ip}:8000" if ip else None
+    write_app_env(rumah)
     if ip:
         print("\n" + "=" * 60)
         print("  ALAMAT RUMAH (HP & PC satu WiFi) — TETAP, gak berubah:")
@@ -80,6 +97,7 @@ def main() -> None:
             time.sleep(1)
 
         if "url" in found:
+            write_app_env(rumah, found["url"])
             print("\n" + "=" * 60)
             print("  ALAMAT LUAR (beda WiFi/kuota) — BERUBAH tiap restart:")
             print("  " + found["url"])
@@ -87,7 +105,8 @@ def main() -> None:
         else:
             print("! Tunnel belum dapet URL (cek koneksi). Backend tetap jalan di http://localhost:8000")
 
-    print("Backend + tunnel JALAN. Biarin jendela ini kebuka. Ctrl+C buat matiin.")
+    print("Backend + tunnel JALAN. App di HP nyari alamatnya SENDIRI (gak perlu diisi).")
+    print("Biarin jendela ini kebuka. Ctrl+C buat matiin.")
     try:
         while True:
             time.sleep(1)

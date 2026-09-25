@@ -1,8 +1,11 @@
 """api.py — backend FastAPI buat app mobile Trade IDX.
 
-Nyediain: hasil analisa terbaru, jalanin auto_analisa on-demand, dan atur LLM
-(bongkar-pasang provider + key). Badan artikel dibaca lokal (trafilatura) — jadi
-satu-satunya API eksternal = LLM yang dipilih di /config/llm.
+Nyediain: hasil analisa terbaru, jalanin auto_analisa on-demand, atur LLM
+(bongkar-pasang provider + key), dan jurnal real (catat / tutup / hapus). Badan artikel
+dibaca lokal (trafilatura) — jadi satu-satunya API eksternal = LLM yang dipilih di /config/llm.
+
+KUNCI AKSES: kalau TRADE_API_TOKEN diisi di .env (WAJIB di server cloud), semua endpoint
+kecuali /health minta header `X-Token`. Kosong = bebas (mode PC rumah).
 
 Jalanin:
   .venv/Scripts/python.exe -m uvicorn backend.api:app --host 0.0.0.0 --port 8000
@@ -10,12 +13,15 @@ Jalanin:
 from __future__ import annotations
 
 import json
+import os
+import secrets
 import sqlite3
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -32,10 +38,14 @@ def db() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     return conn
 
-from trade import llm  # noqa: E402
+def db_rw() -> sqlite3.Connection:
+    """Koneksi TULIS ke trade.db — cuma dipakai endpoint jurnal."""
+    conn = sqlite3.connect(DB)
+    conn.row_factory = sqlite3.Row
+    return conn
 
-app = FastAPI(title="Trade IDX API", version="0.1.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+from trade import journal as jr, llm  # noqa: E402
+from trade.risk import trailing_stop_level  # noqa: E402
 
 
 # ---------------------------------------------------------------- .env helpers
@@ -65,6 +75,22 @@ def write_env(updates: dict) -> None:
         if k not in done:
             out.append(f"{k}={v}")
     ENV.write_text("\n".join(out) + "\n", encoding="utf-8")
+
+
+# ---------------------------------------------------------------- kunci akses
+API_TOKEN = os.environ.get("TRADE_API_TOKEN") or read_env().get("TRADE_API_TOKEN", "")
+
+
+def require_token(request: Request) -> None:
+    """Server publik: tanpa kunci, orang lain bisa hapus jurnal / ganti API key LLM."""
+    if not API_TOKEN or request.url.path == "/health":
+        return
+    if not secrets.compare_digest(request.headers.get("x-token", ""), API_TOKEN):
+        raise HTTPException(401, "Kunci akses salah atau kosong. Isi 'Kunci Akses' di Pengaturan app.")
+
+
+app = FastAPI(title="Trade IDX API", version="0.1.0", dependencies=[Depends(require_token)])
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
 # ---------------------------------------------------------------- endpoints
@@ -230,6 +256,118 @@ def get_macro():
     finally:
         conn.close()
     return {"items": out}
+
+
+# ---------------------------------------------------------------- jurnal real (catat / tutup / hapus)
+class TradeIn(BaseModel):
+    ticker: str
+    entry: float
+    lot: int
+    stop: float | None = None
+    target: float | None = None
+    thesis: str | None = None
+    entry_date: str | None = None
+
+
+class CloseIn(BaseModel):
+    exit: float
+    exit_date: str | None = None
+
+
+def _iso_date(s: str | None, label: str) -> str | None:
+    """'2026-09-25' -> dicek formatnya & gak boleh masa depan. Kosong -> None (= hari ini)."""
+    if not s or not s.strip():
+        return None
+    try:
+        d = date.fromisoformat(s.strip())
+    except ValueError:
+        raise HTTPException(400, f"{label} harus format TTTT-BB-HH (mis. 2026-09-25).")
+    if d > date.today():
+        raise HTTPException(400, f"{label} gak boleh di masa depan.")
+    return d.isoformat()
+
+
+@app.get("/journal")
+def get_journal():
+    """Isi jurnal real + P/L (posisi terbuka pakai close terakhir) + garis jual trailing."""
+    conn = db()
+    try:
+        rows = [dict(r) for r in conn.execute(
+            "SELECT * FROM journal "
+            "ORDER BY status='closed', COALESCE(exit_date, entry_date) DESC, id DESC")]
+        px: dict[str, float] = {}
+        px_date: dict[str, str] = {}
+        trail: dict[int, float | None] = {}
+        for r in rows:
+            if r["status"] != "open":
+                continue
+            if r["ticker"] not in px:
+                last = conn.execute(
+                    "SELECT close, date FROM prices WHERE ticker=? ORDER BY date DESC LIMIT 1",
+                    (r["ticker"],)).fetchone()
+                if last:
+                    px[r["ticker"]], px_date[r["ticker"]] = last["close"], last["date"]
+            trail[r["id"]] = trailing_stop_level(conn, r["ticker"], r["entry_date"], r["stop"])["trail"]
+    finally:
+        conn.close()
+    trades = [{**r, **jr.pl(r, px.get(r["ticker"])),
+               "px_date": px_date.get(r["ticker"]), "trail": trail.get(r["id"])} for r in rows]
+    return {"trades": trades, "summary": jr.summary(rows, px)}
+
+
+@app.post("/journal")
+def add_journal(t: TradeIn):
+    """Catat posisi baru (yang UDAH dibeli di broker)."""
+    tk = jr.norm_ticker(t.ticker)
+    if t.entry <= 0 or t.lot <= 0:
+        raise HTTPException(400, "Harga beli & jumlah lot harus lebih dari 0.")
+    if t.stop and t.stop >= t.entry:
+        raise HTTPException(400, "Stop (rem rugi) harus di BAWAH harga beli.")
+    if t.target and t.target <= t.entry:
+        raise HTTPException(400, "Target harus di ATAS harga beli.")
+    entry_date = _iso_date(t.entry_date, "Tanggal beli")
+    conn = db_rw()
+    try:
+        if not conn.execute("SELECT 1 FROM prices WHERE ticker=? LIMIT 1", (tk,)).fetchone():
+            raise HTTPException(400, f"Kode {tk.replace('.JK', '')} gak dikenal (gak ada data harganya).")
+        new_id = jr.add_trade(conn, tk, t.entry, t.lot, entry_date, t.stop or None,
+                              t.target or None, (t.thesis or "").strip() or None)
+    finally:
+        conn.close()
+    return {"ok": True, "id": new_id}
+
+
+@app.post("/journal/{trade_id}/close")
+def close_journal(trade_id: int, c: CloseIn):
+    """Tutup posisi (udah dijual di broker) -> jadi realized P/L."""
+    if c.exit <= 0:
+        raise HTTPException(400, "Harga jual harus lebih dari 0.")
+    exit_date = _iso_date(c.exit_date, "Tanggal jual")
+    conn = db_rw()
+    try:
+        row = conn.execute("SELECT entry_date FROM journal WHERE id=? AND status='open'",
+                           (trade_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, f"Posisi #{trade_id} gak ketemu atau udah ditutup.")
+        if exit_date and exit_date < row["entry_date"][:10]:
+            raise HTTPException(400, "Tanggal jual gak boleh sebelum tanggal beli.")
+        jr.close_trade(conn, trade_id, c.exit, exit_date)
+    finally:
+        conn.close()
+    return {"ok": True}
+
+
+@app.delete("/journal/{trade_id}")
+def delete_journal(trade_id: int):
+    """Hapus catatan (salah input / dobel). Permanen."""
+    conn = db_rw()
+    try:
+        n = jr.delete_trade(conn, trade_id)
+    finally:
+        conn.close()
+    if not n:
+        raise HTTPException(404, f"Catatan #{trade_id} gak ketemu.")
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------- config LLM

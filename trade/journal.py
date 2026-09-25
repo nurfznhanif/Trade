@@ -46,6 +46,13 @@ def close_trade(conn, trade_id, exit_price, exit_date=None) -> int:
     return n
 
 
+def delete_trade(conn, trade_id) -> int:
+    """Hapus 1 catatan (salah input / dobel). Return jumlah baris kehapus (0 = gak ketemu)."""
+    n = conn.execute("DELETE FROM journal WHERE id=?", (trade_id,)).rowcount
+    conn.commit()
+    return n
+
+
 def pl(row, current=None) -> dict:
     """Hitung P/L satu trade. row: dict journal. current: harga sekarang (buat open trade).
 
