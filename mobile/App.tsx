@@ -1188,6 +1188,9 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
   const [tok, setTok] = useState(API_TOKEN);
   const [showConn, setShowConn] = useState(false);
   const [editing, setEditing] = useState(false);
+  // hasil tombol Cek terakhir; berlaku cuma buat kombinasi provider|model|key yang dicek
+  const [check, setCheck] = useState<{ sig: string; ok: boolean; text: string } | null>(null);
+  const [checking, setChecking] = useState(false);
   const [llmStatus, setLlmStatus] = useState<{ state: "cek" | "ok" | "gagal"; text?: string }>({ state: "cek" });
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ text: string; ok?: boolean } | null>(null);
@@ -1250,8 +1253,10 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
   const hasKey = !!info?.keys?.[prov];
   const needKey = prov !== "" && prov !== "ollama";
   const active = !!info && prov === info.provider && model === info.model;   // pilihan = yang lagi dipakai
-  const showInput = needKey && (editing || !hasKey);
-  const showSave = !!info && (editing || !active);
+  const showBar = !!info && (editing || !active);   // bar API key + tombol Cek
+  const showSave = showBar;
+  const sig = `${prov}|${model.trim()}|${key.trim()}|${prov === "custom" ? baseUrl.trim() : ""}`;
+  const chk = check && check.sig === sig ? check : null;   // ganti apa pun -> wajib Cek ulang
   const savedKeys = info ? Object.keys(info.keys || {}).filter((k) => info.keys[k]) : [];
 
   // ganti provider -> model ikut reset (balik ke provider aktif = model aktifnya)
@@ -1270,7 +1275,7 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
       setProv(info.provider); setModel(info.model);
       provRef.current = info.provider;
     }
-    setKey(""); setEditing(false); setMsg(null);
+    setKey(""); setEditing(false); setMsg(null); setCheck(null);
   };
 
   const cfg = () => ({
@@ -1280,24 +1285,31 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
     base_url: prov === "custom" ? baseUrl.trim() : undefined,
   });
 
-  // 1 tombol: SAMBUNG dulu, kalau nyambung baru SIMPAN
+  // tombol Cek: sambungin provider/model/key yang dipilih (belum disimpan)
+  const cek = () => {
+    if (!model.trim()) return setMsg({ text: "Pilih model dulu.", ok: false });
+    if (needKey && !hasKey && !key.trim()) return setMsg({ text: `Tempel API key ${label} dulu.`, ok: false });
+    const s = sig;
+    setChecking(true); setMsg(null);
+    testLlm(cfg())
+      .then((r) => {
+        setCheck({ sig: s, ok: r.ok, text: r.message.replace(/^(GAGAL|OK)\s*\S\s*/, "") });
+        if (r.ok && key.trim()) fetchModels(prov, key.trim());   // key baru valid -> ambil daftar model aslinya
+      })
+      .catch((e) => setCheck({ sig: s, ok: false, text: String(e?.message || e) }))
+      .finally(() => setChecking(false));
+  };
+
+  // Simpan cuma boleh setelah Cek nyambung
   const save = async () => {
-    const m = model.trim();
-    if (!m) return setMsg({ text: "Pilih model dulu.", ok: false });
-    if (needKey && !hasKey && !key.trim()) return setMsg({ text: `Isi API key ${label} dulu.`, ok: false });
-    setBusy(true);
-    setMsg({ text: `Nyambungin ${label} / ${m}…` });
+    if (!chk?.ok) return setMsg({ text: "Klik Cek dulu — pastiin nyambung sebelum disimpan.", ok: false });
+    setBusy(true); setMsg(null);
     try {
-      const r = await testLlm(cfg());
-      if (!r.ok) {
-        setMsg({ text: r.message, ok: false });
-        return;
-      }
       await setLlmConfig(cfg());
-      setMsg(null);
       setLlmStatus({ state: "ok" });
       setKey("");
       setEditing(false);
+      setCheck(null);
       await loadConfig(false);
     } catch (e: any) {
       setMsg({ text: "Gagal simpan: " + String(e?.message || e), ok: false });
@@ -1314,16 +1326,23 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
       .finally(() => setBusy(false));
   };
 
-  // baris status di kolom API key: koneksi otak aktif / key tersimpan / belum diisi
-  let rowDot = "#f59e0b";
-  let rowText = key.trim() ? `API key ${label} belum disimpan` : `API key ${label} belum diisi`;
+  // baris status di kolom API key: koneksi aktif / hasil Cek / key tersimpan / belum diisi
+  const GREEN = "#22c55e", RED = "#ef4444", AMBER = "#f59e0b", GREY = "#7d8792";
+  let rowDot = AMBER;
+  let rowText = key.trim() ? `Klik Cek buat nyambungin ${label}` : `API key ${label} belum diisi`;
   if (active && !editing) {
-    if (llmStatus.state === "ok") { rowDot = "#22c55e"; rowText = `Tersambung — ${label} / ${model}`; }
-    else if (llmStatus.state === "gagal") { rowDot = "#ef4444"; rowText = `Gagal nyambung — ${llmStatus.text || ""}`; }
-    else { rowDot = "#7d8792"; rowText = `Ngecek koneksi ${label}…`; }
-  } else if (hasKey || !needKey) {
-    rowDot = "#22c55e";
-    rowText = needKey ? `API key ${label} tersimpan` : `${label} gak butuh API key`;
+    if (llmStatus.state === "ok") { rowDot = GREEN; rowText = `Tersambung — ${label} / ${model}`; }
+    else if (llmStatus.state === "gagal") { rowDot = RED; rowText = `Gagal nyambung — ${llmStatus.text || ""}`; }
+    else { rowDot = GREY; rowText = `Ngecek koneksi ${label}…`; }
+  } else if (checking) {
+    rowDot = GREY; rowText = `Ngecek ${label} / ${model}…`;
+  } else if (chk) {
+    rowDot = chk.ok ? GREEN : RED;
+    rowText = chk.ok ? `Tersambung — ${label} / ${model} · tinggal Simpan` : `Gagal nyambung — ${chk.text}`;
+  } else if (!needKey) {
+    rowDot = GREY; rowText = `${label} gak butuh API key — klik Cek`;
+  } else if (hasKey && !key.trim()) {
+    rowDot = GREEN; rowText = `API key ${label} tersimpan${showBar ? " — klik Cek" : ""}`;
   }
 
   const connColor = connected ? "#22c55e" : connected === null ? "#7d8792" : "#f59e0b";
@@ -1387,24 +1406,41 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
           <View style={[styles.connRow, styles.connRowField]}>
             <View style={[styles.jDot, { backgroundColor: rowDot }]} />
             <Text style={styles.connText}>{rowText}</Text>
-            {needKey && hasKey && !editing ? (
-              <Pressable onPress={() => { setEditing(true); setKey(""); setMsg(null); }} hitSlop={8}>
+            {active && !editing ? (
+              <Pressable onPress={() => { setEditing(true); setKey(""); setMsg(null); setCheck(null); }} hitSlop={8}>
                 <Text style={styles.connLink}>Ubah</Text>
               </Pressable>
             ) : null}
           </View>
-          {showInput ? (
-            <TextInput style={[styles.input, styles.keyInput]} value={key} onChangeText={setKey} secureTextEntry
-              autoCapitalize="none" autoCorrect={false}
-              placeholder={hasKey ? `API key ${label} baru` : `tempel API key ${label}`}
-              placeholderTextColor="#56606c" />
+          {showBar ? (
+            <View style={styles.keyBar}>
+              {needKey ? (
+                <TextInput style={[styles.input, styles.keyBarInput]} value={key} onChangeText={setKey} secureTextEntry
+                  autoCapitalize="none" autoCorrect={false}
+                  placeholder={hasKey ? "key baru (kosongin = pakai yang tersimpan)" : `tempel API key ${label}`}
+                  placeholderTextColor="#56606c" />
+              ) : (
+                <View style={styles.flex1} />
+              )}
+              <Pressable
+                style={({ pressed }) => [styles.cekBtn, chk?.ok && styles.cekBtnOk, pressed && styles.btnPressed]}
+                onPress={cek}
+                disabled={checking || busy}
+              >
+                {checking ? (
+                  <ActivityIndicator size="small" color="#2dd4bf" />
+                ) : (
+                  <Text style={[styles.cekText, chk?.ok && styles.cekTextOk]}>{chk?.ok ? "Nyambung" : "Cek"}</Text>
+                )}
+              </Pressable>
+            </View>
           ) : null}
         </>
       ) : null}
 
       {showSave ? (
         <View style={styles.settBtns}>
-          <Pressable style={[styles.settBtn, styles.settBtnPri]} onPress={save} disabled={busy}>
+          <Pressable style={[styles.settBtn, styles.settBtnPri, !chk?.ok && styles.settBtnOff]} onPress={save} disabled={busy || !chk?.ok}>
             <Text style={styles.settBtnPriText}>{busy ? "…" : "Simpan"}</Text>
           </Pressable>
           <Pressable style={[styles.settBtn, styles.settBtnGhost]} onPress={cancel} disabled={busy}>
@@ -1466,7 +1502,13 @@ const styles = StyleSheet.create({
   connText: { color: "#e6edf3", fontSize: 14, fontWeight: "600", flex: 1 },
   connLink: { color: "#2dd4bf", fontSize: 13, fontWeight: "700" },
   connRowField: { marginTop: 0 },
-  keyInput: { marginTop: 8 },
+  keyBar: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 },
+  keyBarInput: { flex: 1, minWidth: 0 },
+  cekBtn: { minWidth: 76, alignSelf: "stretch", alignItems: "center", justifyContent: "center", paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: "#2dd4bf55", backgroundColor: "rgba(45,212,191,0.10)" },
+  cekBtnOk: { borderColor: "#22c55e88", backgroundColor: "rgba(34,197,94,0.12)" },
+  cekText: { color: "#2dd4bf", fontSize: 14, fontWeight: "800" },
+  cekTextOk: { color: "#22c55e" },
+  settBtnOff: { opacity: 0.35 },
   keyRow: { marginTop: 8 },
   keyUsing: { color: "#7d8792", fontSize: 12, fontWeight: "700", borderWidth: 1, borderColor: "#1e2731", borderRadius: 999, paddingHorizontal: 9, paddingVertical: 2 },
   keyDel: { color: "#ef4444", fontSize: 13, fontWeight: "700" },
