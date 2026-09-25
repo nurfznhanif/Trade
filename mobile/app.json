@@ -34,6 +34,15 @@
           }
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "c6991482-3022-4e0b-99f7-e623468e4c4d"
+      }
+    },
+    "owner": "nrfznhnf",
+    "updates": {
+      "url": "https://u.expo.dev/c6991482-3022-4e0b-99f7-e623468e4c4d"
+    }
   }
 }
