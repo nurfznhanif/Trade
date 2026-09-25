@@ -459,9 +459,9 @@ function CallChart({ c }: { c: Call }) {
       <MiniChart
         series={px.series}
         lines={[
-          { v: c.target, color: "#22c55e", label: "T" },
-          { v: c.entry, color: "#38bdf8", label: "E" },
-          { v: c.stop, color: "#ef4444", label: "S" },
+          { v: c.target, color: "#22c55e", label: "Target" },
+          { v: c.entry, color: "#38bdf8", label: "Entry" },
+          { v: c.stop, color: "#ef4444", label: "Stop" },
         ]}
       />
       <Text style={styles.miniCap}>
@@ -555,18 +555,13 @@ function SliceStat({ label, val, sub, color }: { label: string; val: string; sub
   );
 }
 
-function RuleChip({ icon, text }: { icon: IconName; text: string }) {
-  return (
-    <View style={styles.ruleChip}>
-      <Ionicons name={icon} size={12} color="#8b95a1" />
-      <Text style={styles.ruleText}>{text}</Text>
-    </View>
-  );
-}
-
 function SliceResult({ r }: { r: Slicing }) {
+  const [rules, setRules] = useState(false);
   const usedPct = r.modal ? r.used / r.modal : 0;
   const more = r.skipped.length - 3;
+  const adaUntung = typeof r.reward_rp === "number";   // server lama belum ngirim -> jangan tampil NaN
+  const rp = (x: number) => `Rp${fmtRpShort(x)}`;
+  const rk = r.rules;
   return (
     <View>
       <View style={styles.sliceBar}>
@@ -577,10 +572,12 @@ function SliceResult({ r }: { r: Slicing }) {
       </View>
 
       <View style={styles.sliceStats}>
-        <SliceStat label="Terpakai" val={`Rp${fmtRpShort(r.used)}`} sub={pctTxt(usedPct)} />
-        <SliceStat label="Kas" val={`Rp${fmtRpShort(r.cash)}`} sub={pctTxt(1 - usedPct)} />
-        <SliceStat label="Untung di target" val={`+Rp${fmtRpShort(r.reward_rp)}`} sub={`+${pctTxt(r.reward_pct)}`} color="#22c55e" />
-        <SliceStat label="Rugi maks (kena stop)" val={`−Rp${fmtRpShort(r.risk_rp)}`} sub={`−${pctTxt(r.risk_pct)}`} color="#ef4444" />
+        <SliceStat label="Terpakai" val={rp(r.used)} sub={pctTxt(usedPct)} />
+        <SliceStat label="Kas (gak dibelikan)" val={rp(r.cash)} sub={pctTxt(1 - usedPct)} />
+        {adaUntung ? (
+          <SliceStat label="Untung kalau sampai Target" val={`+${rp(r.reward_rp)}`} sub={`+${pctTxt(r.reward_pct)} dari modal`} color="#22c55e" />
+        ) : null}
+        <SliceStat label="Rugi kalau kena Stop" val={`−${rp(r.risk_rp)}`} sub={`−${pctTxt(r.risk_pct)} dari modal`} color="#ef4444" />
       </View>
 
       {r.risk_off ? (
@@ -601,16 +598,16 @@ function SliceResult({ r }: { r: Slicing }) {
               {p.ticker.replace(".JK", "")} <Text style={styles.sliceLot}>{p.lot} lot @ {fmtInt(p.entry)}</Text>
             </Text>
             <View style={styles.slicePills}>
-              {p.reward_rp > 0 && p.target != null ? (
+              {adaUntung && p.reward_rp > 0 && p.target != null ? (
                 <View style={[styles.slicePill, styles.slicePillUp]}>
                   <Text style={[styles.slicePillText, { color: "#22c55e" }]}>
-                    T {fmtInt(p.target)} · +Rp{fmtRpShort(p.reward_rp)}
+                    Target {fmtInt(p.target)} · untung +{rp(p.reward_rp)}
                   </Text>
                 </View>
               ) : null}
               <View style={[styles.slicePill, styles.slicePillDown]}>
                 <Text style={[styles.slicePillText, { color: "#ef4444" }]}>
-                  S {fmtInt(p.stop)} · −Rp{fmtRpShort(p.risk_rp)}
+                  Stop {fmtInt(p.stop)} · rugi −{rp(p.risk_rp)}
                 </Text>
               </View>
             </View>
@@ -618,7 +615,7 @@ function SliceResult({ r }: { r: Slicing }) {
           </View>
           <View style={styles.sliceRight}>
             <Text style={styles.sliceVal}>Rp{fmtInt(p.value)}</Text>
-            <Text style={styles.sliceSub}>{Math.round(p.pct * 100)}%</Text>
+            <Text style={styles.sliceSub}>{Math.round(p.pct * 100)}% modal</Text>
           </View>
         </View>
       ))}
@@ -631,12 +628,30 @@ function SliceResult({ r }: { r: Slicing }) {
         </Text>
       ) : null}
 
-      <View style={styles.ruleRow}>
-        <RuleChip icon="pie-chart-outline" text={`maks ${Math.round(r.rules.max_pct * 100)}%/saham`} />
-        <RuleChip icon="trending-down-outline" text={`rugi ~${(r.rules.risk_pct * 100).toFixed(0)}%/saham`} />
-        <RuleChip icon="layers-outline" text={`maks ${r.rules.max_pos} saham`} />
-      </View>
-      <Text style={styles.sliceFoot}>Hitungan otomatis dari aturan risiko — bukan saran beli.</Text>
+      {/* aturan hitungan, dijelasin pakai angka rupiah modal ini */}
+      <Pressable onPress={() => setRules((o) => !o)} hitSlop={8} style={styles.macroMoreBtn}>
+        <Ionicons name="information-circle-outline" size={15} color="#2dd4bf" />
+        <Text style={styles.macroMore}>{rules ? "Tutup cara hitungnya" : "Cara hitungnya"}</Text>
+        <Ionicons name={rules ? "chevron-up" : "chevron-down"} size={14} color="#2dd4bf" />
+      </Pressable>
+      {rules ? (
+        <View style={styles.ruleBox}>
+          {[
+            `Tiap saham maksimal ${Math.round(rk.max_pct * 100)}% dari modal (${rp(r.modal * rk.max_pct)}), biar gak numpuk di satu saham. Kalau 1 lot aja udah lebih mahal dari itu, sahamnya dilewati.`,
+            `Kalau harga turun sampai Stop, rugi tiap saham dijaga sekitar ${(rk.risk_pct * 100).toFixed(0)}% dari modal (${rp(r.modal * rk.risk_pct)}).` +
+              (r.risk_off ? " Normalnya 2%, dipotong setengah karena pasar lagi RISK-OFF." : ""),
+            `Maksimal ${rk.max_pos} saham. Porsi yang kurang dari ${Math.round(rk.min_pct * 100)}% modal (${rp(r.modal * rk.min_pct)}) gak diambil karena kekecilan.`,
+            "Yang dapat jatah duluan: keyakinan (konviksi) paling tinggi, lalu yang peluang untungnya paling besar dibanding ruginya.",
+            "Fee beli 0,15% udah ikut dihitung. Sisa uang yang gak kebelikan jadi kas.",
+          ].map((t, i) => (
+            <View key={i} style={styles.ruleItem}>
+              <Text style={styles.ruleNum}>{i + 1}</Text>
+              <Text style={styles.ruleItemText}>{t}</Text>
+            </View>
+          ))}
+          <Text style={styles.sliceFoot}>Ini hitungan otomatis, bukan saran beli — keputusan tetap di tangan sendiri.</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -1715,16 +1730,17 @@ const styles = StyleSheet.create({
   sliceStat: { width: "50%" },
   sliceStatVal: { color: "#e6edf3", fontSize: 16, fontWeight: "800", marginTop: 2 },
   sliceCallout: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginTop: 14, padding: 10, borderRadius: 10, backgroundColor: "rgba(245,158,11,0.08)", borderWidth: 1, borderColor: "rgba(245,158,11,0.30)" },
-  sliceCalloutText: { flex: 1, color: "#c2cbd4", fontSize: 12, lineHeight: 17 },
+  sliceCalloutText: { flex: 1, color: "#c2cbd4", fontSize: 12, lineHeight: 17, textAlign: "justify" },
   sliceCalloutStrong: { color: "#fbbf24", fontWeight: "800" },
   slicePills: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 5 },
   slicePill: { borderRadius: 6, borderWidth: 1, paddingHorizontal: 6, paddingVertical: 2 },
   slicePillUp: { borderColor: "rgba(34,197,94,0.35)", backgroundColor: "rgba(34,197,94,0.08)" },
   slicePillDown: { borderColor: "rgba(239,68,68,0.35)", backgroundColor: "rgba(239,68,68,0.08)" },
   slicePillText: { fontSize: 11, fontWeight: "700" },
-  ruleRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 14 },
-  ruleChip: { flexDirection: "row", alignItems: "center", gap: 4, borderWidth: 1, borderColor: "#1e2731", backgroundColor: "#0e141b", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
-  ruleText: { color: "#8b95a1", fontSize: 11, fontWeight: "600" },
+  ruleBox: { marginTop: 8, padding: 12, borderRadius: 10, backgroundColor: "#0e141b", borderWidth: 1, borderColor: "#1e2731", gap: 9 },
+  ruleItem: { flexDirection: "row", gap: 9, alignItems: "flex-start" },
+  ruleNum: { width: 18, height: 18, borderRadius: 9, backgroundColor: "rgba(45,212,191,0.15)", color: "#2dd4bf", fontSize: 11, fontWeight: "800", textAlign: "center", lineHeight: 18 },
+  ruleItemText: { flex: 1, color: "#c2cbd4", fontSize: 12, lineHeight: 18, textAlign: "justify" },
 
   // ---- Jurnal ----
   jSum: { backgroundColor: "#121821", borderRadius: 14, padding: 14, marginTop: 14, borderWidth: 1, borderColor: "#1e2731" },
