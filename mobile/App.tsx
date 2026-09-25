@@ -53,7 +53,7 @@ import {
   MacroItem,
   Mover,
   NewsItem,
-  Prices,
+  Bar,
   saveApiBase,
   saveApiToken,
   saveModal,
@@ -70,14 +70,14 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "hindari", label: "Hindari" },
 ];
 
-type Nav = "analisa" | "jurnal" | "sinyal" | "berita" | "chart" | "pengaturan";
+type Nav = "analisa" | "jurnal" | "sinyal" | "berita" | "pengaturan";
 type IconName = ComponentProps<typeof Ionicons>["name"];
 const NAV_ITEMS: { key: Nav; label: string; icon: IconName }[] = [
   { key: "analisa", label: "Analisa", icon: "stats-chart" },
   { key: "jurnal", label: "Jurnal", icon: "briefcase-outline" },
   { key: "sinyal", label: "Sinyal", icon: "pulse" },
   { key: "berita", label: "Berita", icon: "newspaper-outline" },
-  { key: "chart", label: "Chart", icon: "trending-up" },
+  { key: "pengaturan", label: "Pengaturan", icon: "settings-outline" },
 ];
 
 export default function App() {
@@ -139,13 +139,6 @@ export default function App() {
           <Text style={styles.logo}>
             TRADE <Text style={styles.logoAccent}>IDX</Text>
           </Text>
-          <Pressable onPress={() => setNav("pengaturan")} hitSlop={8}>
-            <Ionicons
-              name="settings-outline"
-              size={22}
-              color={nav === "pengaturan" ? "#2dd4bf" : "#7d8792"}
-            />
-          </Pressable>
         </View>
         <Text style={styles.sub}>
           {fmtWaktu(data.generated_at, data.generated)}
@@ -217,7 +210,7 @@ export default function App() {
 
             {/* Kartu call */}
             {shown.map((c) => (
-              <CallCard key={c.ticker} c={c} />
+              <CallCard key={c.ticker} c={c} live={live} />
             ))}
           </>
         )}
@@ -226,7 +219,6 @@ export default function App() {
 
         {nav === "sinyal" && <SignalsScreen />}
         {nav === "berita" && <NewsScreen />}
-        {nav === "chart" && <ChartScreen data={data} />}
 
         {nav === "pengaturan" && (
           <SettingsScreen connected={conn === "cari" ? null : conn === "ok" && live} onConnected={connect} />
@@ -476,37 +468,7 @@ function NewsCard({ n }: { n: NewsItem }) {
   );
 }
 
-// ============================ TAB CHART ============================
-function ChartScreen({ data }: { data: Analysis }) {
-  const tickers = useMemo(() => {
-    const t = [...data.calls.map((c) => c.ticker), ...(data.positions || []).map((p) => p.ticker)];
-    return Array.from(new Set(t));
-  }, [data]);
-  const [sel, setSel] = useState(tickers[0] || "BMRI.JK");
-  const { loading, data: px, err } = useAsync(() => getPrices(sel, 90), [sel]);
-  return (
-    <>
-      <View style={styles.secHead}>
-        <Text style={styles.sectionTitle}>CHART HARGA</Text>
-        <Text style={styles.secSub}>90 hari · level target/stop dari sinyal</Text>
-      </View>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.chipScroll}
-        contentContainerStyle={styles.chipScrollInner}
-      >
-        {tickers.map((t) => (
-          <Pressable key={t} onPress={() => setSel(t)} style={[styles.chip, sel === t && styles.chipOn]}>
-            <Text style={[styles.chipText, sel === t && styles.chipTextOn]}>{t.replace(".JK", "")}</Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-      {loading ? <Loading /> : err || !px ? <ErrBox msg={err} /> : <ChartPanel px={px} />}
-    </>
-  );
-}
-
+// ============================ CHART (di kartu saham BELI) ============================
 function RefLine({ y, color, label }: { y: number; color: string; label: string }) {
   return (
     <View style={[styles.refLine, { top: y }]} pointerEvents="none">
@@ -516,71 +478,76 @@ function RefLine({ y, color, label }: { y: number; color: string; label: string 
   );
 }
 
-function ChartPanel({ px }: { px: Prices }) {
-  const H = 168;
-  const s = px.series;
-  const lv = px.levels;
-  let lo = Math.min(...s.map((b) => b.low));
-  let hi = Math.max(...s.map((b) => b.high));
-  [lv.stop, lv.target].forEach((v) => {
-    if (v != null) {
-      lo = Math.min(lo, v);
-      hi = Math.max(hi, v);
+type ChartLine = { v: number | null | undefined; color: string; label: string };
+
+// chart harga ringkas: batang high-low per hari (hijau naik / merah turun) + garis level analisa
+function MiniChart({ series, lines, H = 120 }: { series: Bar[]; lines: ChartLine[]; H?: number }) {
+  let lo = Math.min(...series.map((b) => b.low));
+  let hi = Math.max(...series.map((b) => b.high));
+  lines.forEach((l) => {
+    if (l.v != null) {
+      lo = Math.min(lo, l.v);
+      hi = Math.max(hi, l.v);
     }
   });
-  const range = hi - lo || 1;
-  const y = (v: number) => H - ((v - lo) / range) * H;
-  const up = "#22c55e";
-  const down = "#ef4444";
+  const pad = (hi - lo) * 0.06 || 1;   // biar garis & label gak nempel tepi
+  lo -= pad;
+  hi += pad;
+  const y = (v: number) => H - ((v - lo) / (hi - lo)) * H;
+  return (
+    <View style={[styles.chartBox, { height: H }]}>
+      <View style={styles.barsRow}>
+        {series.map((b, i) => (
+          <View key={i} style={styles.barCell}>
+            <View
+              style={{
+                marginTop: y(b.high),
+                height: Math.max(1.5, y(b.low) - y(b.high)),
+                width: 2.2,
+                borderRadius: 1.5,
+                backgroundColor: b.close >= b.open ? "#22c55e" : "#ef4444",
+                opacity: 0.85,
+              }}
+            />
+          </View>
+        ))}
+      </View>
+      {lines.map((l) =>
+        l.v != null ? <RefLine key={l.label} y={y(l.v)} color={l.color} label={`${l.label} ${fmtInt(l.v)}`} /> : null,
+      )}
+    </View>
+  );
+}
+
+// chart 60 hari buat 1 saham saran BELI: garis Target / Entry / Stop dari analisa
+function CallChart({ c }: { c: Call }) {
+  const { loading, data: px, err } = useAsync(() => getPrices(c.ticker, 60), [c.ticker]);
+  if (loading) {
+    return (
+      <View style={[styles.chartBox, styles.miniLoading]}>
+        <ActivityIndicator size="small" color="#2dd4bf" />
+      </View>
+    );
+  }
+  if (err || !px || px.series.length < 2) return null;
   const chg = px.chg_pct ?? 0;
-  const sig = px.signal;
-  const sc = sig ? sigColor(sig.action) : "#7d8792";
   return (
     <View>
-      <View style={styles.chartHead}>
-        <View>
-          <Text style={styles.chartTicker}>{px.ticker.replace(".JK", "")}</Text>
-          <Text style={styles.chartLast}>
-            Rp{fmtInt(px.last)}{" "}
-            <Text style={{ color: chg >= 0 ? up : down, fontSize: 13, fontWeight: "700" }}>
-              {chg >= 0 ? "+" : ""}
-              {chg}% · {px.days}h
-            </Text>
-          </Text>
-        </View>
-        {sig ? (
-          <View style={[styles.badge, { backgroundColor: sc + "22", borderColor: sc }]}>
-            <Text style={[styles.badgeText, { color: sc }]}>{sig.action}</Text>
-          </View>
-        ) : null}
-      </View>
-
-      <View style={[styles.chartBox, { height: H }]}>
-        <View style={styles.barsRow}>
-          {s.map((b, i) => {
-            const top = y(b.high);
-            const h = Math.max(1.5, y(b.low) - y(b.high));
-            const c = b.close >= b.open ? up : down;
-            return (
-              <View key={i} style={styles.barCell}>
-                <View style={{ marginTop: top, height: h, width: 2.2, borderRadius: 1.5, backgroundColor: c, opacity: 0.85 }} />
-              </View>
-            );
-          })}
-        </View>
-        {lv.target != null ? <RefLine y={y(lv.target)} color={up} label={`T ${fmtInt(lv.target)}`} /> : null}
-        {lv.stop != null ? <RefLine y={y(lv.stop)} color={down} label={`S ${fmtInt(lv.stop)}`} /> : null}
-      </View>
-
-      {sig ? (
-        <View style={styles.metricRow}>
-          <Metric label="Skor" val={sig.score.toFixed(2)} />
-          <Metric label="RSI" val={sig.rsi.toFixed(0)} color={sig.rsi >= 70 ? down : sig.rsi <= 30 ? up : undefined} />
-          <Metric label="Sentimen" val={(sig.sent >= 0 ? "+" : "") + sig.sent.toFixed(2)} color={sentColor(sig.sent)} />
-          {lv.ma20 != null ? <Metric label="MA20" val={fmtInt(lv.ma20)} /> : null}
-          {lv.ma50 != null ? <Metric label="MA50" val={fmtInt(lv.ma50)} /> : null}
-        </View>
-      ) : null}
+      <MiniChart
+        series={px.series}
+        lines={[
+          { v: c.target, color: "#22c55e", label: "T" },
+          { v: c.entry, color: "#38bdf8", label: "E" },
+          { v: c.stop, color: "#ef4444", label: "S" },
+        ]}
+      />
+      <Text style={styles.miniCap}>
+        {px.days} hari · terakhir Rp{fmtInt(px.last)}{" "}
+        <Text style={{ color: chg >= 0 ? "#22c55e" : "#ef4444" }}>
+          {chg >= 0 ? "+" : ""}
+          {chg}%
+        </Text>
+      </Text>
     </View>
   );
 }
@@ -733,7 +700,7 @@ function MacroTile({ m }: { m: MacroItem }) {
   );
 }
 
-function CallCard({ c }: { c: Call }) {
+function CallCard({ c, live }: { c: Call; live: boolean }) {
   const bar = c.flag ? flagColor[c.flag] : actionColor(c.action);
   const toTarget = pct(c.entry, c.target);
   const toStop = pct(c.entry, c.stop);
@@ -761,6 +728,9 @@ function CallCard({ c }: { c: Call }) {
           {ratio ? <Level label="R:R" val={`1:${ratio}`} /> : null}
         </View>
       ) : null}
+
+      {/* chart cuma buat saham saran BELI */}
+      {live && group(c.action) === "beli" && c.entry != null ? <CallChart c={c} /> : null}
 
       {c.lot ? (
         <View style={styles.lotRow}>
@@ -1804,12 +1774,10 @@ const styles = StyleSheet.create({
   formErr: { color: "#fca5a5", fontSize: 13, marginTop: 10 },
 
   // ---- Chart ----
-  chipScroll: { marginTop: 12, marginBottom: 2 },
   chipScrollInner: { gap: 8, paddingRight: 8 },
-  chartHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 14 },
-  chartTicker: { color: "#e6edf3", fontSize: 22, fontWeight: "800", letterSpacing: 1 },
-  chartLast: { color: "#e6edf3", fontSize: 18, fontWeight: "800", marginTop: 2 },
   chartBox: { backgroundColor: "#0e141b", borderRadius: 12, borderWidth: 1, borderColor: "#1e2731", marginTop: 14, position: "relative", overflow: "hidden" },
+  miniLoading: { height: 120, alignItems: "center", justifyContent: "center" },
+  miniCap: { color: "#7d8792", fontSize: 11, marginTop: 6 },
   barsRow: { flexDirection: "row", height: "100%", alignItems: "flex-start" },
   barCell: { flex: 1, alignItems: "center" },
   refLine: { position: "absolute", left: 0, right: 0, flexDirection: "row", alignItems: "center" },
