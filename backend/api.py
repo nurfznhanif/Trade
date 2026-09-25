@@ -403,17 +403,44 @@ def set_llm(cfg: LLMConfig):
     return {"ok": True}
 
 
+def _env_for(provider: str, model: str | None, api_key: str | None, base_url: str | None) -> dict:
+    """Salinan .env buat provider yang lagi DIPILIH di app (gak disimpan)."""
+    env = read_env()
+    if provider != env.get("LLM_PROVIDER"):
+        env.pop("LLM_API_KEY", None)   # key tersimpan punya provider lain -> jangan dipakai
+    env["LLM_PROVIDER"] = provider
+    if model:
+        env["LLM_MODEL"] = model
+    if api_key:
+        env["LLM_API_KEY"] = api_key
+    if base_url is not None:
+        env["LLM_BASE_URL"] = base_url
+    return env
+
+
 @app.post("/config/llm/test")
 def test_llm(cfg: LLMConfig | None = None):
     """Tes provider/model yang lagi DIPILIH di app (belum perlu disimpan). Tanpa body = tes yang tersimpan."""
-    env = read_env()
-    if cfg:
-        if cfg.provider != env.get("LLM_PROVIDER"):
-            env.pop("LLM_API_KEY", None)   # key tersimpan punya provider lain -> jangan dipakai
-        env["LLM_PROVIDER"], env["LLM_MODEL"] = cfg.provider, cfg.model
-        if cfg.api_key:
-            env["LLM_API_KEY"] = cfg.api_key
-        if cfg.base_url is not None:
-            env["LLM_BASE_URL"] = cfg.base_url
+    env = _env_for(cfg.provider, cfg.model, cfg.api_key, cfg.base_url) if cfg else read_env()
     ok, msg = llm.test_connection(env)
     return {"ok": ok, "message": msg}
+
+
+class ModelsQuery(BaseModel):
+    provider: str
+    api_key: str | None = None
+    base_url: str | None = None
+
+
+@app.post("/config/llm/models")
+def llm_models(q: ModelsQuery):
+    """Daftar model ASLI dari provider (pakai key) — biar dropdown gak basi pas model lama dipensiunkan.
+    Tanpa key / gagal / katalog kegedean (>25, mis. OpenRouter) -> daftar bawaan."""
+    p = llm.PROVIDERS.get(q.provider)
+    if not p:
+        raise HTTPException(400, "Provider gak dikenal.")
+    env = _env_for(q.provider, None, q.api_key, q.base_url)
+    live = llm.list_models(env) if (llm.resolve(env)["key"] or q.provider == "ollama") else []
+    if 0 < len(live) <= 25:
+        return {"models": live, "live": True}
+    return {"models": p["models"], "live": False}

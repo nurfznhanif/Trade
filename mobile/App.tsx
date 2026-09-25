@@ -1,4 +1,4 @@
-import { ComponentProps, useEffect, useMemo, useState } from "react";
+import { ComponentProps, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -35,6 +35,7 @@ import {
   deleteTrade,
   getAnalysis,
   getJournal,
+  getLlmModels,
   getLlmConfig,
   getMacro,
   getNews,
@@ -1187,10 +1188,27 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
   const [showKey, setShowKey] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [liveModels, setLiveModels] = useState<Record<string, string[]>>({});
+  const provRef = useRef(prov);
+  provRef.current = prov;
+
+  // daftar model ASLI dari provider (butuh key); model yang udah dipensiunkan otomatis diganti
+  const fetchModels = (p: string, apiKey?: string) =>
+    getLlmModels({ provider: p, api_key: apiKey })
+      .then((r) => {
+        if (!r.live) return;
+        setLiveModels((m) => ({ ...m, [p]: r.models }));
+        if (provRef.current === p) setModel((cur) => (r.models.includes(cur) ? cur : r.models[0]));
+      })
+      .catch(() => {});
 
   const loadConfig = () =>
     getLlmConfig()
-      .then((i) => { setInfo(i); setProv(i.provider); setModel(i.model); setBaseUrl(i.base_url); })
+      .then((i) => {
+        setInfo(i); setProv(i.provider); setModel(i.model); setBaseUrl(i.base_url);
+        provRef.current = i.provider;
+        fetchModels(i.provider);
+      })
       .catch(() => setInfo(null));
 
   useEffect(() => { loadConfig(); }, []);
@@ -1211,8 +1229,10 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
   const pinfo = info?.providers[prov];
   const label = pinfo?.label || prov;
   const provOpts = info ? Object.entries(info.providers).map(([k, v]) => ({ value: k, label: v.label })) : [];
-  const models = pinfo ? [...pinfo.models] : [];
-  if (info && prov === info.provider && info.model && !models.includes(info.model)) models.unshift(info.model);
+  const live = liveModels[prov];
+  const models = [...(live ?? pinfo?.models ?? [])];
+  // model tersimpan di luar daftar bawaan tetap ditampilin — kecuali daftar asli bilang udah gak ada
+  if (!live && info && prov === info.provider && info.model && !models.includes(info.model)) models.unshift(info.model);
   const modelOpts = models.map((m) => ({ value: m, label: m }));
   const savedKey = !!info?.has_key && prov === info?.provider;
   const needKey = prov !== "" && prov !== "ollama";
@@ -1220,10 +1240,12 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
   // ganti provider -> model ikut reset ke model pertama provider itu
   const pickProv = (k: string) => {
     setProv(k);
-    setModel(info?.providers[k]?.models[0] || "");
+    setModel(liveModels[k]?.[0] || info?.providers[k]?.models[0] || "");
     setKey("");
     setShowKey(false);
     setMsg(null);
+    provRef.current = k;
+    fetchModels(k);
   };
 
   const cfg = () => ({
@@ -1238,7 +1260,7 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
     if (needKey && !savedKey && !key.trim()) return setMsg({ text: `Isi API key ${label} dulu.`, ok: false });
     setBusy(true); setMsg(null);
     setLlmConfig(cfg())
-      .then(() => { setMsg({ text: `Tersimpan — analisa pakai ${label} / ${model.trim()}.`, ok: true }); setKey(""); setShowKey(false); loadConfig(); })
+      .then(() => { setMsg({ text: `Tersimpan — analisa pakai ${label} / ${model.trim()}.`, ok: true }); setKey(""); setShowKey(false); loadConfig(); fetchModels(prov); })
       .catch((e) => setMsg({ text: "Gagal simpan: " + String(e?.message || e), ok: false }))
       .finally(() => setBusy(false));
   };
@@ -1247,7 +1269,10 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
     if (!model.trim()) return setMsg({ text: "Pilih model dulu.", ok: false });
     setBusy(true); setMsg({ text: `Ngetes ${label} / ${model.trim()}…` });
     testLlm(cfg())
-      .then((r) => setMsg({ text: r.message, ok: r.ok }))
+      .then((r) => {
+        setMsg({ text: r.message, ok: r.ok });
+        if (r.ok && key.trim()) fetchModels(prov, key.trim());   // key baru valid -> ambil daftar model aslinya
+      })
       .catch((e) => setMsg({ text: "Gagal tes: " + String(e?.message || e), ok: false }))
       .finally(() => setBusy(false));
   };
@@ -1313,7 +1338,9 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
           <View style={[styles.connRow, styles.connRowField]}>
             <View style={[styles.jDot, { backgroundColor: savedKey ? "#22c55e" : "#f59e0b" }]} />
             <Text style={styles.connText}>
-              {savedKey ? `API key ${label} tersimpan` : `API key ${label} belum diisi`}
+              {savedKey
+                ? `API key ${label} tersimpan`
+                : key.trim() ? `API key ${label} belum disimpan` : `API key ${label} belum diisi`}
             </Text>
             {savedKey ? (
               <Pressable onPress={() => { setShowKey((s) => !s); setKey(""); }} hitSlop={8}>

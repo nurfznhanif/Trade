@@ -122,6 +122,11 @@ export const setLlmConfig = (cfg: {
   body: JSON.stringify(cfg),
 });
 
+// daftar model ASLI dari provider (pakai key); live=false -> daftar bawaan
+export const getLlmModels = (q: {
+  provider: string; api_key?: string; base_url?: string;
+}): Promise<{ models: string[]; live: boolean }> => req("/config/llm/models", json("POST", q));
+
 // tes provider/model yang lagi DIPILIH (belum perlu disimpan)
 export const testLlm = (cfg?: {
   provider: string; model: string; api_key?: string; base_url?: string;

@@ -23,7 +23,8 @@ PROVIDERS: dict[str, dict] = {
                "key_url": "aistudio.google.com/apikey",
                "models": ["gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-3.6-flash"]},
     "deepseek": {"label": "DeepSeek", "openai": True, "base": "https://api.deepseek.com",
-                 "key_url": "platform.deepseek.com", "models": ["deepseek-chat", "deepseek-reasoner"]},
+                 # deepseek-chat/-reasoner DIPENSIUNKAN 24 Jul 2026 (api-docs.deepseek.com)
+                 "key_url": "platform.deepseek.com", "models": ["deepseek-flash", "deepseek-v4-pro"]},
     "openai": {"label": "OpenAI", "openai": True, "base": "https://api.openai.com/v1",
                "key_url": "platform.openai.com/api-keys", "models": ["gpt-4o-mini", "gpt-4o"]},
     "groq": {"label": "Groq", "openai": True, "base": "https://api.groq.com/openai/v1",
