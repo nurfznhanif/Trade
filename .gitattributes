@@ -1,0 +1,3 @@
+# skrip server Linux wajib LF, skrip Windows CRLF (biar gak rusak lintas OS)
+*.sh text eol=lf
+*.bat text eol=crlf

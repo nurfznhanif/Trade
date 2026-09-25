@@ -9,3 +9,7 @@ data/
 # Claude Code — setelan izin per-mesin (jangan dibagi); command/ boleh di-commit
 .claude/settings.local.json
 tools/
+
+# Server cloud: konfigurasi & kunci SSH per-mesin (jangan ke GitHub)
+deploy/server.env
+*.key
