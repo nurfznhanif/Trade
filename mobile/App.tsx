@@ -25,7 +25,6 @@ import {
   rr,
   sampleAnalysis,
   sentColor,
-  sigColor,
   verdictColor,
 } from "./src/analysis";
 import {
@@ -43,7 +42,6 @@ import {
   getMacro,
   getNews,
   getPrices,
-  getSignals,
   getSlicing,
   JournalSummary,
   JournalTrade,
@@ -59,7 +57,6 @@ import {
   saveModal,
   Slicing,
   setLlmConfig,
-  Signal,
   testLlm,
 } from "./src/api";
 
@@ -70,12 +67,11 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "hindari", label: "Hindari" },
 ];
 
-type Nav = "analisa" | "jurnal" | "sinyal" | "berita" | "pengaturan";
+type Nav = "analisa" | "jurnal" | "berita" | "pengaturan";
 type IconName = ComponentProps<typeof Ionicons>["name"];
 const NAV_ITEMS: { key: Nav; label: string; icon: IconName }[] = [
   { key: "analisa", label: "Analisa", icon: "stats-chart" },
   { key: "jurnal", label: "Jurnal", icon: "briefcase-outline" },
-  { key: "sinyal", label: "Sinyal", icon: "pulse" },
   { key: "berita", label: "Berita", icon: "newspaper-outline" },
   { key: "pengaturan", label: "Pengaturan", icon: "settings-outline" },
 ];
@@ -217,7 +213,6 @@ export default function App() {
 
         {nav === "jurnal" && <JournalScreen data={data} />}
 
-        {nav === "sinyal" && <SignalsScreen />}
         {nav === "berita" && <NewsScreen />}
 
         {nav === "pengaturan" && (
@@ -318,78 +313,6 @@ function Metric({ label, val, color }: { label: string; val: string; color?: str
   );
 }
 
-// ============================ TAB SINYAL ============================
-function SignalsScreen() {
-  const { loading, data, err } = useAsync(() => getSignals(40), []);
-  if (loading) return <Loading />;
-  if (err || !data) return <ErrBox msg={err} />;
-  return (
-    <>
-      <View style={styles.secHead}>
-        <Text style={styles.sectionTitle}>SINYAL MESIN</Text>
-        <Text style={styles.secSub}>skor teknikal + sentimen · {data.asof}</Text>
-      </View>
-      {data.signals.map((s, i) => (
-        <SignalRow key={s.ticker} s={s} rank={i + 1} />
-      ))}
-    </>
-  );
-}
-
-function SignalRow({ s, rank }: { s: Signal; rank: number }) {
-  const col = sigColor(s.action);
-  const trend =
-    s.ma20 && s.ma50
-      ? s.close > s.ma20 && s.ma20 > s.ma50
-        ? "uptrend"
-        : s.close < s.ma20 && s.ma20 < s.ma50
-        ? "downtrend"
-        : "sideways"
-      : "";
-  return (
-    <View style={[styles.card, { borderLeftColor: col }]}>
-      <View style={styles.cardTop}>
-        <View style={styles.sigLeft}>
-          <Text style={styles.rank}>#{rank}</Text>
-          <Text style={styles.ticker}>{s.ticker.replace(".JK", "")}</Text>
-        </View>
-        <View style={[styles.badge, { backgroundColor: col + "22", borderColor: col }]}>
-          <Text style={[styles.badgeText, { color: col }]}>{s.action}</Text>
-        </View>
-      </View>
-      <View style={styles.metricRow}>
-        <Metric label="Skor" val={s.score.toFixed(2)} />
-        {s.rsi != null ? (
-          <Metric
-            label="RSI"
-            val={s.rsi.toFixed(0)}
-            color={s.rsi >= 70 ? "#ef4444" : s.rsi <= 30 ? "#22c55e" : undefined}
-          />
-        ) : null}
-        {s.sent != null ? (
-          <Metric label="Sentimen" val={(s.sent >= 0 ? "+" : "") + s.sent.toFixed(2)} color={sentColor(s.sent)} />
-        ) : null}
-        <Metric label="Berita" val={String(s.n_news)} />
-      </View>
-      {trend ? (
-        <Text style={styles.trendText}>
-          {trend} · harga {fmtInt(s.close)}
-        </Text>
-      ) : null}
-      {s.reasons && s.reasons.length > 0 ? (
-        <View style={styles.reasonWrap}>
-          {s.reasons.slice(0, 3).map((r, idx) => (
-            <View key={idx} style={styles.reasonItem}>
-              <View style={[styles.rDot, { backgroundColor: col }]} />
-              <Text style={styles.reasonSmall}>{r}</Text>
-            </View>
-          ))}
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
 // ============================ TAB BERITA ============================
 function fmtDate(iso: string | null): string {
   if (!iso) return "";
@@ -409,8 +332,8 @@ function NewsScreen() {
   return (
     <>
       <View style={styles.secHead}>
-        <Text style={styles.sectionTitle}>SENTIMEN BERITA</Text>
-        <Text style={styles.secSub}>skor dari isi berita · 14 hari terakhir</Text>
+        <Text style={[styles.sectionTitle, styles.secHeadTitle]}>SENTIMEN BERITA</Text>
+        <Text style={styles.secSub}>Skor Berita 14 hari terakhir</Text>
       </View>
       {data.positif.length > 0 || data.negatif.length > 0 ? (
         <View style={styles.moverBox}>
@@ -816,8 +739,7 @@ function JournalScreen({ data }: { data: Analysis }) {
   return (
     <>
       <View style={styles.secHead}>
-        <Text style={styles.sectionTitle}>JURNAL REAL</Text>
-        <Text style={styles.secSub}>catatan beli-jual beneran di broker</Text>
+        <Text style={[styles.sectionTitle, styles.secHeadTitle]}>JURNAL REAL</Text>
       </View>
       {err ? <Text style={styles.note}>{err}</Text> : null}
 
@@ -846,7 +768,7 @@ function JournalScreen({ data }: { data: Analysis }) {
           <Ionicons name="book-outline" size={40} color="#56606c" />
           <Text style={styles.soonTitle}>Jurnal masih kosong</Text>
           <Text style={styles.soonDesc}>
-            Catat saham yang udah dibeli di broker — untung-ruginya kehitung otomatis dari harga penutupan.
+            Catat saham yang udah dibeli di broker — untung-ruginya kehitung otomatis.
           </Text>
         </View>
       ) : null}
@@ -1694,21 +1616,16 @@ const styles = StyleSheet.create({
   // ---- shared tab data ----
   center: { alignItems: "center", justifyContent: "center", paddingVertical: 56, gap: 10 },
   centerText: { color: "#7d8792", fontSize: 13 },
-  secHead: { marginTop: 18, marginBottom: 2 },
+  secHead: { marginTop: 14, marginBottom: 2 },
+  secHeadTitle: { marginTop: 0 },
   secSub: { color: "#7d8792", fontSize: 12, marginTop: 2 },
   metricRow: { flexDirection: "row", gap: 16, marginTop: 12, flexWrap: "wrap" },
   metric: { minWidth: 52 },
   metricLabel: { color: "#7d8792", fontSize: 10, fontWeight: "700", letterSpacing: 0.5 },
   metricVal: { color: "#e6edf3", fontSize: 15, fontWeight: "800", marginTop: 2 },
 
-  // ---- Sinyal ----
+  // ---- baris ticker + badge (dipakai kartu jurnal) ----
   sigLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
-  rank: { color: "#56606c", fontSize: 13, fontWeight: "800" },
-  trendText: { color: "#8b95a1", fontSize: 12, marginTop: 10 },
-  reasonWrap: { marginTop: 10, gap: 6 },
-  reasonItem: { flexDirection: "row", alignItems: "flex-start", gap: 7 },
-  rDot: { width: 5, height: 5, borderRadius: 3, marginTop: 6 },
-  reasonSmall: { color: "#c2cbd4", fontSize: 12, lineHeight: 17, flex: 1 },
 
   // ---- Berita ----
   moverBox: { backgroundColor: "#121821", borderRadius: 14, padding: 12, marginTop: 14, borderWidth: 1, borderColor: "#1e2731", gap: 10 },
