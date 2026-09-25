@@ -251,9 +251,6 @@ export default function App() {
           <SettingsScreen connected={conn === "cari" ? null : conn === "ok" && live} onConnected={connect} />
         )}
 
-        <Text style={styles.footer}>
-          Trade IDX · {conn === "ok" ? `tersambung ke server (${API_BASE})` : "belum tersambung ke server"}
-        </Text>
       </ScrollView>
 
       <BottomNav nav={nav} setNav={setNav} />
@@ -1187,6 +1184,7 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
   const [base, setBase] = useState(API_BASE);
   const [tok, setTok] = useState(API_TOKEN);
   const [showConn, setShowConn] = useState(false);
+  const [showKey, setShowKey] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -1224,6 +1222,7 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
     setProv(k);
     setModel(info?.providers[k]?.models[0] || "");
     setKey("");
+    setShowKey(false);
     setMsg(null);
   };
 
@@ -1239,7 +1238,7 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
     if (needKey && !savedKey && !key.trim()) return setMsg({ text: `Isi API key ${label} dulu.`, ok: false });
     setBusy(true); setMsg(null);
     setLlmConfig(cfg())
-      .then(() => { setMsg({ text: `Tersimpan — analisa pakai ${label} / ${model.trim()}.`, ok: true }); setKey(""); loadConfig(); })
+      .then(() => { setMsg({ text: `Tersimpan — analisa pakai ${label} / ${model.trim()}.`, ok: true }); setKey(""); setShowKey(false); loadConfig(); })
       .catch((e) => setMsg({ text: "Gagal simpan: " + String(e?.message || e), ok: false }))
       .finally(() => setBusy(false));
   };
@@ -1311,10 +1310,22 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
       {needKey ? (
         <>
           <Text style={styles.settLabel}>API Key</Text>
-          <TextInput style={styles.input} value={key} onChangeText={setKey} secureTextEntry
-            autoCapitalize="none" autoCorrect={false}
-            placeholder={savedKey ? "tersimpan — isi cuma kalau mau ganti" : `tempel API key ${label}`}
-            placeholderTextColor="#56606c" />
+          <View style={[styles.connRow, styles.connRowField]}>
+            <View style={[styles.jDot, { backgroundColor: savedKey ? "#22c55e" : "#f59e0b" }]} />
+            <Text style={styles.connText}>
+              {savedKey ? `API key ${label} tersimpan` : `API key ${label} belum diisi`}
+            </Text>
+            {savedKey ? (
+              <Pressable onPress={() => { setShowKey((s) => !s); setKey(""); }} hitSlop={8}>
+                <Text style={styles.connLink}>{showKey ? "Batal" : "Ubah"}</Text>
+              </Pressable>
+            ) : null}
+          </View>
+          {showKey || !savedKey ? (
+            <TextInput style={[styles.input, styles.keyInput]} value={key} onChangeText={setKey} secureTextEntry
+              autoCapitalize="none" autoCorrect={false}
+              placeholder={`tempel API key ${label}`} placeholderTextColor="#56606c" />
+          ) : null}
         </>
       ) : null}
 
@@ -1348,6 +1359,8 @@ const styles = StyleSheet.create({
   connRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10, backgroundColor: "#121821", borderWidth: 1, borderColor: "#1e2731", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11 },
   connText: { color: "#e6edf3", fontSize: 14, fontWeight: "600", flex: 1 },
   connLink: { color: "#2dd4bf", fontSize: 13, fontWeight: "700" },
+  connRowField: { marginTop: 0 },
+  keyInput: { marginTop: 8 },
   msgOk: { color: "#22c55e" },
   msgErr: { color: "#fca5a5" },
 
@@ -1456,7 +1469,6 @@ const styles = StyleSheet.create({
 
   sectionTitle: { color: "#7d8792", fontSize: 12, fontWeight: "800", letterSpacing: 1, marginTop: 26, marginBottom: 2 },
 
-  footer: { color: "#4b5560", fontSize: 11, textAlign: "center", marginTop: 28 },
 
   // ---- shared tab data ----
   center: { alignItems: "center", justifyContent: "center", paddingVertical: 56, gap: 10 },
