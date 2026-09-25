@@ -18,6 +18,8 @@ export function setApiBase(url: string) {
   API_BASE = norm(url);
 }
 
+// server cloud (VPS, nyala 24 jam) = sumber data UTAMA — jurnal hidup di sini
+const CLOUD = "https://149-129-251-217.sslip.io";
 // ditulis scripts/serve.py ke mobile/.env.local tiap backend nyala (ke-bake pas bundle/build)
 const ENV_RUMAH = process.env.EXPO_PUBLIC_API_BASE;
 const ENV_LUAR = process.env.EXPO_PUBLIC_API_BASE_LUAR;
@@ -38,9 +40,10 @@ async function ping(base: string, ms = 3000): Promise<boolean> {
 // Cari backend OTOMATIS (panggil pas app start): coba semua kandidat barengan, ambil yang
 // nyaut sesuai urutan prioritas, simpan. Return alamat yang ketemu, atau null kalau PC mati.
 //   1. alamat tersimpan (terakhir berhasil / diisi manual)
-//   2. ALAMAT RUMAH dari serve.py (LAN IP PC)
-//   3. PC ini sendiri (app versi web di laptop)
-//   4. ALAMAT LUAR dari serve.py (tunnel, buat beda WiFi)
+//   2. server cloud (utama)
+//   3. ALAMAT RUMAH dari serve.py (LAN IP PC) — cadangan kalau cloud gak nyaut
+//   4. PC ini sendiri (app versi web di laptop)
+//   5. ALAMAT LUAR dari serve.py (tunnel, buat beda WiFi)
 export async function loadApiBase(): Promise<string | null> {
   let saved: string | null = null;
   try {
@@ -49,7 +52,7 @@ export async function loadApiBase(): Promise<string | null> {
     if (tok) API_TOKEN = tok;
   } catch {}
   const host = typeof window !== "undefined" ? window.location?.hostname : undefined;
-  const cands = [saved, ENV_RUMAH, host ? `http://${host}:8000` : null, "http://127.0.0.1:8000", ENV_LUAR]
+  const cands = [saved, CLOUD, ENV_RUMAH, host ? `http://${host}:8000` : null, "http://127.0.0.1:8000", ENV_LUAR]
     .filter((c): c is string => !!c)
     .map(norm);
   const uniq = Array.from(new Set(cands));
@@ -58,8 +61,8 @@ export async function loadApiBase(): Promise<string | null> {
   if (hit) {
     API_BASE = hit;
     if (hit !== saved) AsyncStorage.setItem(BASE_KEY, hit).catch(() => {});
-  } else if (saved || ENV_RUMAH) {
-    API_BASE = norm((saved || ENV_RUMAH) as string);
+  } else {
+    API_BASE = norm(saved || CLOUD);
   }
   return hit;
 }
