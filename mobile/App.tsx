@@ -43,17 +43,20 @@ import {
   getNews,
   getPrices,
   getSignals,
+  getSlicing,
   JournalSummary,
   JournalTrade,
   loadApiBase,
+  loadModal,
   LlmInfo,
   MacroItem,
   Mover,
   NewsItem,
   Prices,
-  runAnalisa,
   saveApiBase,
   saveApiToken,
+  saveModal,
+  Slicing,
   setLlmConfig,
   Signal,
   testLlm,
@@ -79,7 +82,6 @@ const NAV_ITEMS: { key: Nav; label: string; icon: IconName }[] = [
 export default function App() {
   const [tab, setTab] = useState<Tab>("beli");
   const [nav, setNav] = useState<Nav>("analisa");
-  const [loading, setLoading] = useState(false);
   const [data, setData] = useState<Analysis>(sampleAnalysis);
   const [live, setLive] = useState(false);
   const [note, setNote] = useState("");
@@ -123,15 +125,6 @@ export default function App() {
     : "NETRAL";
 
   // tombol Analisa: panggil backend jalanin auto_analisa (bisa 1-2 menit)
-  const onAnalisa = () => {
-    setLoading(true);
-    setNote("");
-    runAnalisa(data.modal ? String(data.modal) : undefined)
-      .then((a) => { setData(a); setLive(true); })
-      .catch((e) => setNote("Gagal analisa: " + String(e?.message || e)))
-      .finally(() => setLoading(false));
-  };
-
   return (
     <SafeAreaProvider>
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
@@ -194,26 +187,8 @@ export default function App() {
               ) : null}
             </View>
 
-            {/* Tombol Analisa */}
-            <Pressable
-              style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
-              onPress={onAnalisa}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#04110d" />
-              ) : (
-                <View style={styles.btnRow}>
-                  <Ionicons name="refresh" size={17} color="#04110d" />
-                  <Text style={styles.btnText}>ANALISA SEKARANG</Text>
-                </View>
-              )}
-            </Pressable>
-            {data.modal ? (
-              <Text style={styles.modalNote}>
-                Sizing untuk modal Rp{fmtInt(data.modal)}
-              </Text>
-            ) : null}
+            {/* Slicing modal (gantiin tombol Analisa — analisa jalan otomatis tiap subuh di server) */}
+            <SlicingCard live={live} />
 
             {/* Stat tiles */}
             <View style={styles.tiles}>
@@ -603,6 +578,120 @@ function ChartPanel({ px }: { px: Prices }) {
           {lv.ma50 != null ? <Metric label="MA50" val={fmtInt(lv.ma50)} /> : null}
         </View>
       ) : null}
+    </View>
+  );
+}
+
+// ============================ SLICING MODAL ============================
+// "1500000" -> "1.500.000" pas ngetik
+const fmtRibuan = (v: string) => {
+  const d = v.replace(/\D/g, "").replace(/^0+/, "");
+  return d ? d.replace(/\B(?=(\d{3})+(?!\d))/g, ".") : "";
+};
+// warna porsi (kategori, bukan makna untung/rugi)
+const PALET = ["#2dd4bf", "#38bdf8", "#818cf8", "#a78bfa", "#22d3ee", "#5eead4"];
+
+function SlicingCard({ live }: { live: boolean }) {
+  const [modal, setModal] = useState("");
+  const [res, setRes] = useState<Slicing | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    loadModal().then((v) => v && setModal(v));   // modal terakhir diinget
+  }, []);
+
+  const hitung = () => {
+    const m = num(modal);
+    if (!m) return setErr("Isi modal dulu.");
+    if (!live) return setErr("Server belum nyambung.");
+    setBusy(true);
+    setErr("");
+    saveModal(modal);
+    getSlicing(m)
+      .then(setRes)
+      .catch((e) => { setRes(null); setErr(String(e?.message || e)); })
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <View style={styles.sliceCard}>
+      <View style={styles.sliceHead}>
+        <Ionicons name="pie-chart-outline" size={15} color="#2dd4bf" />
+        <Text style={styles.macroLabel}>SLICING MODAL</Text>
+      </View>
+      <View style={styles.keyBar}>
+        <View style={[styles.input, styles.keyBarInput, styles.rpBox]}>
+          <Text style={styles.rpPrefix}>Rp</Text>
+          <TextInput
+            style={styles.rpInput}
+            value={modal}
+            onChangeText={(v) => setModal(fmtRibuan(v))}
+            keyboardType="numeric"
+            placeholder="modal, mis. 1.500.000"
+            placeholderTextColor="#56606c"
+            onSubmitEditing={hitung}
+          />
+        </View>
+        <Pressable style={({ pressed }) => [styles.cekBtn, pressed && styles.btnPressed]} onPress={hitung} disabled={busy}>
+          {busy ? <ActivityIndicator size="small" color="#2dd4bf" /> : <Text style={styles.cekText}>Hitung</Text>}
+        </Pressable>
+      </View>
+      {err ? <Text style={styles.formErr}>{err}</Text> : null}
+      {res ? <SliceResult r={res} /> : null}
+    </View>
+  );
+}
+
+function SliceResult({ r }: { r: Slicing }) {
+  const usedPct = r.modal ? r.used / r.modal : 0;
+  const more = r.skipped.length - 3;
+  return (
+    <View>
+      <View style={styles.sliceBar}>
+        {r.picks.map((p, i) => (
+          <View key={p.ticker} style={{ flex: p.pct, backgroundColor: PALET[i % PALET.length] }} />
+        ))}
+        <View style={{ flex: Math.max(0, 1 - usedPct), backgroundColor: "#1e2731" }} />
+      </View>
+      <View style={styles.metricRow}>
+        <Metric label="Terpakai" val={`Rp${fmtInt(r.used)}`} />
+        <Metric label="Kas" val={`Rp${fmtInt(r.cash)}`} />
+        <Metric label="Rugi maks" val={`Rp${fmtInt(r.risk_rp)}`} color="#ef4444" />
+      </View>
+      {r.risk_off ? (
+        <Text style={styles.sliceNote}>Pasar RISK-OFF — risiko per saham dipotong setengah, sisanya jadi kas.</Text>
+      ) : null}
+
+      {r.picks.map((p, i) => (
+        <View key={p.ticker} style={styles.sliceRow}>
+          <View style={[styles.sliceSwatch, { backgroundColor: PALET[i % PALET.length] }]} />
+          <View style={styles.flex1}>
+            <Text style={styles.sliceTicker}>
+              {p.ticker.replace(".JK", "")} <Text style={styles.sliceLot}>{p.lot} lot @ {fmtInt(p.entry)}</Text>
+            </Text>
+            <Text style={styles.sliceSub}>
+              stop {fmtInt(p.stop)} · rugi maks Rp{fmtInt(p.risk_rp)}{p.note ? ` · ${p.note}` : ""}
+            </Text>
+          </View>
+          <View style={styles.sliceRight}>
+            <Text style={styles.sliceVal}>Rp{fmtInt(p.value)}</Text>
+            <Text style={styles.sliceSub}>{Math.round(p.pct * 100)}%</Text>
+          </View>
+        </View>
+      ))}
+      {r.picks.length === 0 ? <Text style={styles.sliceNote}>Modal belum cukup buat saham BELI hari ini.</Text> : null}
+
+      {r.skipped.length > 0 ? (
+        <Text style={styles.sliceNote}>
+          Gak kebagian: {r.skipped.slice(0, 3).map((s) => `${s.ticker.replace(".JK", "")} (${s.why})`).join(", ")}
+          {more > 0 ? ` +${more} lainnya` : ""}
+        </Text>
+      ) : null}
+      <Text style={styles.sliceFoot}>
+        Hitungan aturan risiko: maks {Math.round(r.rules.max_pct * 100)}% modal per saham, rugi maks ~
+        {(r.rules.risk_pct * 100).toFixed(0)}% modal per saham kalau kena stop. Bukan saran beli.
+      </Text>
     </View>
   );
 }
@@ -1589,7 +1678,6 @@ const styles = StyleSheet.create({
   btnPressed: { opacity: 0.8 },
   btnText: { color: "#04110d", fontSize: 15, fontWeight: "800", letterSpacing: 1 },
   btnRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  modalNote: { color: "#7d8792", fontSize: 12, textAlign: "center", marginTop: 8 },
 
   tiles: { flexDirection: "row", gap: 10, marginTop: 16 },
   tile: { flex: 1, backgroundColor: "#121821", borderRadius: 12, paddingVertical: 14, alignItems: "center", borderWidth: 1, borderColor: "#1e2731" },
@@ -1656,6 +1744,23 @@ const styles = StyleSheet.create({
   newsTicker: { fontSize: 11, fontWeight: "800" },
   newsDot: { color: "#3a434e", fontSize: 11 },
   newsSrc: { color: "#7d8792", fontSize: 11 },
+
+  // ---- Slicing modal ----
+  sliceCard: { backgroundColor: "#121821", borderRadius: 14, padding: 14, marginTop: 16, borderWidth: 1, borderColor: "#1e2731" },
+  sliceHead: { flexDirection: "row", alignItems: "center", gap: 8 },
+  rpBox: { flexDirection: "row", alignItems: "center", paddingVertical: 0 },
+  rpPrefix: { color: "#7d8792", fontSize: 14, fontWeight: "700", marginRight: 6 },
+  rpInput: { flex: 1, minWidth: 0, color: "#e6edf3", fontSize: 15, fontWeight: "700", paddingVertical: 11 },
+  sliceBar: { flexDirection: "row", height: 8, borderRadius: 4, overflow: "hidden", marginTop: 14, gap: 2 },
+  sliceRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 9, borderTopWidth: 1, borderTopColor: "#1e2731", marginTop: 2 },
+  sliceSwatch: { width: 6, height: 30, borderRadius: 3 },
+  sliceTicker: { color: "#e6edf3", fontSize: 15, fontWeight: "800" },
+  sliceLot: { color: "#8b95a1", fontSize: 12, fontWeight: "600" },
+  sliceSub: { color: "#7d8792", fontSize: 11, marginTop: 2 },
+  sliceRight: { alignItems: "flex-end" },
+  sliceVal: { color: "#e6edf3", fontSize: 14, fontWeight: "800" },
+  sliceNote: { color: "#8b95a1", fontSize: 12, lineHeight: 17, marginTop: 10 },
+  sliceFoot: { color: "#56606c", fontSize: 11, lineHeight: 16, marginTop: 10 },
 
   // ---- Jurnal ----
   jSum: { backgroundColor: "#121821", borderRadius: 14, padding: 14, marginTop: 14, borderWidth: 1, borderColor: "#1e2731" },

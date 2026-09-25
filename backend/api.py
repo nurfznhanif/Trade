@@ -45,7 +45,7 @@ def db_rw() -> sqlite3.Connection:
     return conn
 
 from trade import journal as jr, llm  # noqa: E402
-from trade.risk import trailing_stop_level  # noqa: E402
+from trade.risk import allocate, trailing_stop_level  # noqa: E402
 
 
 # ---------------------------------------------------------------- .env helpers
@@ -96,9 +96,21 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 
 # ---------------------------------------------------------------- endpoints
+def _git_version() -> str:
+    """Commit kode yang lagi jalan (biar kelihatan server udah auto-update apa belum)."""
+    try:
+        return subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=str(BASE),
+                              capture_output=True, text=True, timeout=5).stdout.strip() or "?"
+    except Exception:
+        return "?"
+
+
+VERSION = _git_version()
+
+
 @app.get("/health")
 def health():
-    return {"ok": True, "analysis_ready": ANALYSIS.exists()}
+    return {"ok": True, "analysis_ready": ANALYSIS.exists(), "version": VERSION}
 
 
 @app.get("/analysis")
@@ -141,6 +153,24 @@ def run_analisa(modal: str | None = None):
         code, msg = _friendly_error(p.stderr or p.stdout)
         raise HTTPException(code, msg)
     return get_analysis()
+
+
+class SlicingIn(BaseModel):
+    modal: int
+
+
+@app.post("/slicing")
+def slicing(q: SlicingIn):
+    """SLICING MODAL: bagi modal ke saham BELI analisa terbaru. Hitungan aturan risiko (trade.risk.allocate),
+    BUKAN LLM -> instan & gratis. Regime RISK-OFF -> risiko per saham dipotong setengah (sisa jadi kas)."""
+    if q.modal < 100_000:
+        raise HTTPException(400, "Modal minimal Rp100.000.")
+    a = get_analysis()
+    risk_off = "RISK-OFF" in (a.get("macro") or "").upper()
+    out = allocate(q.modal, a.get("calls", []), risk_pct=0.01 if risk_off else 0.02)
+    out["risk_off"] = risk_off
+    out["generated_at"] = a.get("generated_at")
+    return out
 
 
 # ---------------------------------------------------------------- data tab (Sinyal/Berita/Chart)

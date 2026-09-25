@@ -101,10 +101,10 @@ ExecStart=$APP/.venv/bin/python scripts/auto_analisa.py --out $APP/data/analysis
 EOF
 cat > /etc/systemd/system/trade-daily.timer <<EOF
 [Unit]
-Description=Jadwal refresh data Trade IDX (Senin-Jumat 17:30 WIB, habis bursa tutup)
+Description=Jadwal refresh data Trade IDX (Senin-Jumat 05:00 WIB, sebelum bursa buka, di luar jam sibuk LLM)
 
 [Timer]
-OnCalendar=Mon..Fri 17:30 Asia/Jakarta
+OnCalendar=Mon..Fri 05:00 Asia/Jakarta
 Persistent=true
 
 [Install]

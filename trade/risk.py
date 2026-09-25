@@ -43,6 +43,62 @@ def position_size(capital: float, entry: float, stop: float,
             "note": note}
 
 
+def allocate(capital: float, calls: list[dict], risk_pct: float = 0.02, max_pct: float = 0.25,
+             max_pos: int = 6, min_pct: float = 0.05, fee: float = 0.0015, lot: int = LOT) -> dict:
+    """SLICING MODAL: bagi modal ke saham BELI dari analisa. Murni hitungan (BUKAN LLM).
+
+    Tiap saham: ukuran by risiko (entry->stop ≈ risk_pct modal; spekulatif setengahnya),
+    maks max_pct modal per saham (berlaku juga buat 1 lot), porsi < min_pct dibuang (remah),
+    total gak lebih dari modal (fee beli ikut dihitung). Sisa = kas.
+    Urutan jatah: konviksi tinggi dulu -> non-spekulatif -> R:R terbesar. Modal kecil: kalau
+    hitungan risiko 0 lot tapi 1 lot masih muat, tetap 1 lot (minimum IDX)."""
+    rank = {"tinggi": 0, "sedang-tinggi": 0.5, "sedang": 1, "rendah": 2}
+    cands = []
+    for c in calls:
+        act = c.get("action") or ""
+        e, s, t = c.get("entry"), c.get("stop"), c.get("target")
+        if not act.startswith("BELI") or not e or not s or not (e > s > 0):
+            continue
+        spek = "spekulatif" in act.lower()
+        rr = (t - e) / (e - s) if t and t > e else 0.0
+        cands.append((rank.get(str(c.get("conviction") or "").strip().lower(), 3), spek, -rr, c))
+    cands.sort(key=lambda x: x[:3])
+
+    cash, picks, skipped = float(capital), [], []
+    for _, spek, neg_rr, c in cands:
+        e, s = float(c["entry"]), float(c["stop"])
+        per_lot = e * lot * (1 + fee)
+        if len(picks) >= max_pos:
+            skipped.append({"ticker": c["ticker"], "why": f"udah {max_pos} saham"})
+            continue
+        r = risk_pct / 2 if spek else risk_pct
+        lots = min(int(capital * r // ((e - s) * lot)), int(capital * max_pct // per_lot))
+        note = ""
+        if per_lot > capital * max_pct:
+            skipped.append({"ticker": c["ticker"], "why": f"1 lot > {max_pct:.0%} modal"})
+            continue
+        if lots == 0 and per_lot <= cash:
+            lots, note = 1, "minimal 1 lot"
+        lots = min(lots, int(cash // per_lot))
+        if lots <= 0:
+            skipped.append({"ticker": c["ticker"], "why": "modal sisa gak cukup"})
+            continue
+        if lots * per_lot < capital * min_pct:
+            skipped.append({"ticker": c["ticker"], "why": f"porsi < {min_pct:.0%} modal"})
+            continue
+        cost = lots * per_lot
+        cash -= cost
+        picks.append({"ticker": c["ticker"], "action": c.get("action"), "conviction": c.get("conviction"),
+                      "lot": lots, "entry": e, "stop": s, "target": c.get("target"),
+                      "value": round(cost), "pct": cost / capital,
+                      "risk_rp": round(lots * lot * (e - s)), "rr": round(-neg_rr, 2), "note": note})
+    risk_total = sum(p["risk_rp"] for p in picks)
+    return {"modal": capital, "used": round(capital - cash), "cash": round(cash),
+            "risk_rp": risk_total, "risk_pct": risk_total / capital if capital else 0.0,
+            "picks": picks, "skipped": skipped,
+            "rules": {"risk_pct": risk_pct, "max_pct": max_pct, "max_pos": max_pos, "min_pct": min_pct}}
+
+
 def trailing_stop_level(conn, ticker: str, entry_date: str, init_stop,
                         mult: float = TRAIL_MULT, atr_n: int = 14) -> dict:
     """Stop TRAILING sekarang buat posisi terbuka:

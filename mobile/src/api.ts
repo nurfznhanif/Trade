@@ -255,3 +255,41 @@ export const closeTrade = (id: number, exit: number, exit_date?: string | null) 
   req(`/journal/${id}/close`, json("POST", { exit, exit_date }));
 
 export const deleteTrade = (id: number) => req(`/journal/${id}`, { method: "DELETE" });
+
+// ---- Slicing modal (bagi modal ke saham BELI; hitungan aturan risiko, bukan LLM) ----
+export interface SlicePick {
+  ticker: string;
+  action: string;
+  conviction: string | null;
+  lot: number;
+  entry: number;
+  stop: number;
+  target: number | null;
+  value: number; // Rp, termasuk fee beli
+  pct: number; // porsi dari modal (0..1)
+  risk_rp: number; // rugi kalau kena stop
+  rr: number;
+  note: string;
+}
+export interface Slicing {
+  modal: number;
+  used: number;
+  cash: number;
+  risk_rp: number;
+  risk_pct: number;
+  risk_off: boolean;
+  picks: SlicePick[];
+  skipped: { ticker: string; why: string }[];
+  rules: { risk_pct: number; max_pct: number; max_pos: number; min_pct: number };
+}
+export const getSlicing = (modal: number): Promise<Slicing> => req("/slicing", json("POST", { modal }));
+
+const MODAL_KEY = "trade_modal";
+export const loadModal = async (): Promise<string> => {
+  try {
+    return (await AsyncStorage.getItem(MODAL_KEY)) || "";
+  } catch {
+    return "";
+  }
+};
+export const saveModal = (v: string) => AsyncStorage.setItem(MODAL_KEY, v).catch(() => {});
