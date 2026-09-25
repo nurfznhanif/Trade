@@ -110,9 +110,13 @@ export interface LlmInfo {
   label: string;
   base_url: string;
   has_key: boolean;
+  keys: Record<string, boolean>; // provider mana aja yang udah punya API key tersimpan
   providers: Record<string, { label: string; models: string[]; key_url: string; openai: boolean }>;
 }
 export const getLlmConfig = (): Promise<LlmInfo> => req("/config/llm");
+
+export const deleteLlmKey = (provider: string) =>
+  req(`/config/llm/key/${encodeURIComponent(provider)}`, { method: "DELETE" });
 
 export const setLlmConfig = (cfg: {
   provider: string; model: string; api_key?: string; base_url?: string;

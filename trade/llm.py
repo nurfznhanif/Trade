@@ -42,7 +42,8 @@ def resolve(env: dict) -> dict:
     """Config efektif dari env -> {provider, openai, base, key, model, label}."""
     provider = (env.get("LLM_PROVIDER") or "gemini").strip().lower()
     p = PROVIDERS.get(provider, PROVIDERS["gemini"])
-    key = (env.get("LLM_API_KEY") or "").strip()
+    # key per provider (LLM_KEY_DEEPSEEK dst) -> fallback key aktif lama (LLM_API_KEY)
+    key = (env.get(f"LLM_KEY_{provider.upper()}") or env.get("LLM_API_KEY") or "").strip()
     if not key and provider == "gemini":
         key = (env.get("GEMINI_API_KEY") or "").strip()      # backward-compat
     model = (env.get("LLM_MODEL") or "").strip() or (p["models"][0] if p["models"] else "")

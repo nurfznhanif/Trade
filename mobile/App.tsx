@@ -32,6 +32,7 @@ import {
   API_BASE,
   API_TOKEN,
   closeTrade,
+  deleteLlmKey,
   deleteTrade,
   getAnalysis,
   getJournal,
@@ -1185,7 +1186,9 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
   const [base, setBase] = useState(API_BASE);
   const [tok, setTok] = useState(API_TOKEN);
   const [showConn, setShowConn] = useState(false);
-  const [showKey, setShowKey] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [llmStatus, setLlmStatus] = useState<{ state: "cek" | "ok" | "gagal"; text?: string }>({ state: "cek" });
+  const [confirmDel, setConfirmDel] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ text: string; ok?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [liveModels, setLiveModels] = useState<Record<string, string[]>>({});
@@ -1202,12 +1205,21 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
       })
       .catch(() => {});
 
-  const loadConfig = () =>
+  // cek otak analisa yang lagi dipakai beneran nyambung (1 pesan kecil ke LLM)
+  const checkActive = () => {
+    setLlmStatus({ state: "cek" });
+    testLlm()
+      .then((r) => setLlmStatus({ state: r.ok ? "ok" : "gagal", text: r.message.replace(/^GAGAL\s*\S\s*/, "") }))
+      .catch((e) => setLlmStatus({ state: "gagal", text: String(e?.message || e) }));
+  };
+
+  const loadConfig = (cek = true) =>
     getLlmConfig()
       .then((i) => {
         setInfo(i); setProv(i.provider); setModel(i.model); setBaseUrl(i.base_url);
         provRef.current = i.provider;
         fetchModels(i.provider);
+        if (cek) checkActive();
       })
       .catch(() => setInfo(null));
 
@@ -1234,18 +1246,30 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
   // model tersimpan di luar daftar bawaan tetap ditampilin — kecuali daftar asli bilang udah gak ada
   if (!live && info && prov === info.provider && info.model && !models.includes(info.model)) models.unshift(info.model);
   const modelOpts = models.map((m) => ({ value: m, label: m }));
-  const savedKey = !!info?.has_key && prov === info?.provider;
+  const hasKey = !!info?.keys?.[prov];
   const needKey = prov !== "" && prov !== "ollama";
+  const active = !!info && prov === info.provider && model === info.model;   // pilihan = yang lagi dipakai
+  const showInput = needKey && (editing || !hasKey);
+  const showSave = !!info && (editing || !active);
+  const savedKeys = info ? Object.keys(info.keys || {}).filter((k) => info.keys[k]) : [];
 
-  // ganti provider -> model ikut reset ke model pertama provider itu
+  // ganti provider -> model ikut reset (balik ke provider aktif = model aktifnya)
   const pickProv = (k: string) => {
     setProv(k);
-    setModel(liveModels[k]?.[0] || info?.providers[k]?.models[0] || "");
+    setModel(k === info?.provider ? info.model : liveModels[k]?.[0] || info?.providers[k]?.models[0] || "");
     setKey("");
-    setShowKey(false);
+    setEditing(false);
     setMsg(null);
     provRef.current = k;
     fetchModels(k);
+  };
+
+  const cancel = () => {
+    if (info) {
+      setProv(info.provider); setModel(info.model);
+      provRef.current = info.provider;
+    }
+    setKey(""); setEditing(false); setMsg(null);
   };
 
   const cfg = () => ({
@@ -1255,27 +1279,51 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
     base_url: prov === "custom" ? baseUrl.trim() : undefined,
   });
 
-  const save = () => {
-    if (!model.trim()) return setMsg({ text: "Pilih model dulu.", ok: false });
-    if (needKey && !savedKey && !key.trim()) return setMsg({ text: `Isi API key ${label} dulu.`, ok: false });
-    setBusy(true); setMsg(null);
-    setLlmConfig(cfg())
-      .then(() => { setMsg({ text: `Tersimpan — analisa pakai ${label} / ${model.trim()}.`, ok: true }); setKey(""); setShowKey(false); loadConfig(); fetchModels(prov); })
-      .catch((e) => setMsg({ text: "Gagal simpan: " + String(e?.message || e), ok: false }))
+  // 1 tombol: SAMBUNG dulu, kalau nyambung baru SIMPAN
+  const save = async () => {
+    const m = model.trim();
+    if (!m) return setMsg({ text: "Pilih model dulu.", ok: false });
+    if (needKey && !hasKey && !key.trim()) return setMsg({ text: `Isi API key ${label} dulu.`, ok: false });
+    setBusy(true);
+    setMsg({ text: `Nyambungin ${label} / ${m}…` });
+    try {
+      const r = await testLlm(cfg());
+      if (!r.ok) {
+        setMsg({ text: r.message, ok: false });
+        return;
+      }
+      await setLlmConfig(cfg());
+      setMsg(null);
+      setLlmStatus({ state: "ok" });
+      setKey("");
+      setEditing(false);
+      await loadConfig(false);
+    } catch (e: any) {
+      setMsg({ text: "Gagal simpan: " + String(e?.message || e), ok: false });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const delKey = (p: string) => {
+    setBusy(true);
+    deleteLlmKey(p)
+      .then(() => { setConfirmDel(null); loadConfig(false); })
+      .catch((e) => setMsg({ text: String(e?.message || e), ok: false }))
       .finally(() => setBusy(false));
   };
 
-  const test = () => {
-    if (!model.trim()) return setMsg({ text: "Pilih model dulu.", ok: false });
-    setBusy(true); setMsg({ text: `Ngetes ${label} / ${model.trim()}…` });
-    testLlm(cfg())
-      .then((r) => {
-        setMsg({ text: r.message, ok: r.ok });
-        if (r.ok && key.trim()) fetchModels(prov, key.trim());   // key baru valid -> ambil daftar model aslinya
-      })
-      .catch((e) => setMsg({ text: "Gagal tes: " + String(e?.message || e), ok: false }))
-      .finally(() => setBusy(false));
-  };
+  // baris status di kolom API key: koneksi otak aktif / key tersimpan / belum diisi
+  let rowDot = "#f59e0b";
+  let rowText = key.trim() ? `API key ${label} belum disimpan` : `API key ${label} belum diisi`;
+  if (active && !editing) {
+    if (llmStatus.state === "ok") { rowDot = "#22c55e"; rowText = `Tersambung — ${label} / ${model}`; }
+    else if (llmStatus.state === "gagal") { rowDot = "#ef4444"; rowText = `Gagal nyambung — ${llmStatus.text || ""}`; }
+    else { rowDot = "#7d8792"; rowText = `Ngecek koneksi ${label}…`; }
+  } else if (hasKey || !needKey) {
+    rowDot = "#22c55e";
+    rowText = needKey ? `API key ${label} tersimpan` : `${label} gak butuh API key`;
+  }
 
   const connColor = connected ? "#22c55e" : connected === null ? "#7d8792" : "#f59e0b";
   const connText = connected ? "Tersambung ke server" : connected === null ? "Nyari server…" : "Belum tersambung";
@@ -1332,42 +1380,72 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
             placeholder="https://…/v1" placeholderTextColor="#56606c" />
         </>
       ) : null}
-      {needKey ? (
+      {prov ? (
         <>
-          <Text style={styles.settLabel}>API Key</Text>
+          <Text style={styles.settLabel}>{needKey ? "API Key" : "Koneksi"}</Text>
           <View style={[styles.connRow, styles.connRowField]}>
-            <View style={[styles.jDot, { backgroundColor: savedKey ? "#22c55e" : "#f59e0b" }]} />
-            <Text style={styles.connText}>
-              {savedKey
-                ? `API key ${label} tersimpan`
-                : key.trim() ? `API key ${label} belum disimpan` : `API key ${label} belum diisi`}
-            </Text>
-            {savedKey ? (
-              <Pressable onPress={() => { setShowKey((s) => !s); setKey(""); }} hitSlop={8}>
-                <Text style={styles.connLink}>{showKey ? "Batal" : "Ubah"}</Text>
+            <View style={[styles.jDot, { backgroundColor: rowDot }]} />
+            <Text style={styles.connText}>{rowText}</Text>
+            {needKey && hasKey && !editing ? (
+              <Pressable onPress={() => { setEditing(true); setKey(""); setMsg(null); }} hitSlop={8}>
+                <Text style={styles.connLink}>Ubah</Text>
               </Pressable>
             ) : null}
           </View>
-          {showKey || !savedKey ? (
+          {showInput ? (
             <TextInput style={[styles.input, styles.keyInput]} value={key} onChangeText={setKey} secureTextEntry
               autoCapitalize="none" autoCorrect={false}
-              placeholder={`tempel API key ${label}`} placeholderTextColor="#56606c" />
+              placeholder={hasKey ? `API key ${label} baru` : `tempel API key ${label}`}
+              placeholderTextColor="#56606c" />
           ) : null}
         </>
       ) : null}
 
-      <View style={styles.settBtns}>
-        <Pressable style={[styles.settBtn, styles.settBtnPri]} onPress={save} disabled={busy || !info}>
-          <Text style={styles.settBtnPriText}>{busy ? "…" : "Simpan"}</Text>
-        </Pressable>
-        <Pressable style={[styles.settBtn, styles.settBtnGhost]} onPress={test} disabled={busy || !info}>
-          <Text style={styles.settBtnGhostText}>Tes Koneksi</Text>
-        </Pressable>
-      </View>
+      {showSave ? (
+        <View style={styles.settBtns}>
+          <Pressable style={[styles.settBtn, styles.settBtnPri]} onPress={save} disabled={busy}>
+            <Text style={styles.settBtnPriText}>{busy ? "…" : "Simpan"}</Text>
+          </Pressable>
+          <Pressable style={[styles.settBtn, styles.settBtnGhost]} onPress={cancel} disabled={busy}>
+            <Text style={styles.settBtnGhostText}>Batal</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {msg ? (
         <Text style={[styles.settMsg, msg.ok === true && styles.msgOk, msg.ok === false && styles.msgErr]}>
           {msg.text}
         </Text>
+      ) : null}
+
+      {savedKeys.length > 0 ? (
+        <>
+          <Text style={styles.settSection}>API KEY TERSIMPAN</Text>
+          {savedKeys.map((p) => {
+            const using = p === info?.provider;
+            return (
+              <View key={p} style={[styles.connRow, styles.keyRow]}>
+                <Ionicons name="key-outline" size={15} color="#7d8792" />
+                <Text style={styles.connText}>{info?.providers[p]?.label || p}</Text>
+                {using ? (
+                  <Text style={styles.keyUsing}>dipakai</Text>
+                ) : confirmDel === p ? (
+                  <View style={styles.keyConfirm}>
+                    <Pressable onPress={() => delKey(p)} disabled={busy} hitSlop={6}>
+                      <Text style={styles.keyDel}>Ya, hapus</Text>
+                    </Pressable>
+                    <Pressable onPress={() => setConfirmDel(null)} hitSlop={6}>
+                      <Text style={styles.connLink}>Batal</Text>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <Pressable onPress={() => setConfirmDel(p)} hitSlop={6}>
+                    <Text style={styles.keyDel}>Hapus</Text>
+                  </Pressable>
+                )}
+              </View>
+            );
+          })}
+        </>
       ) : null}
     </View>
   );
@@ -1388,6 +1466,10 @@ const styles = StyleSheet.create({
   connLink: { color: "#2dd4bf", fontSize: 13, fontWeight: "700" },
   connRowField: { marginTop: 0 },
   keyInput: { marginTop: 8 },
+  keyRow: { marginTop: 8 },
+  keyUsing: { color: "#7d8792", fontSize: 12, fontWeight: "700", borderWidth: 1, borderColor: "#1e2731", borderRadius: 999, paddingHorizontal: 9, paddingVertical: 2 },
+  keyDel: { color: "#ef4444", fontSize: 13, fontWeight: "700" },
+  keyConfirm: { flexDirection: "row", alignItems: "center", gap: 14 },
   msgOk: { color: "#22c55e" },
   msgErr: { color: "#fca5a5" },
 

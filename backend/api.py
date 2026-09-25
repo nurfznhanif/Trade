@@ -61,18 +61,20 @@ def read_env() -> dict:
 
 
 def write_env(updates: dict) -> None:
+    """Update baris .env. Nilai None = baris itu DIHAPUS."""
     lines = ENV.read_text(encoding="utf-8").splitlines() if ENV.exists() else []
     done, out = set(), []
     for line in lines:
         s = line.strip()
         if s and not s.startswith("#") and "=" in s and s.split("=", 1)[0].strip() in updates:
             k = s.split("=", 1)[0].strip()
-            out.append(f"{k}={updates[k]}")
             done.add(k)
+            if updates[k] is not None:
+                out.append(f"{k}={updates[k]}")
         else:
             out.append(line)
     for k, v in updates.items():
-        if k not in done:
+        if k not in done and v is not None:
             out.append(f"{k}={v}")
     ENV.write_text("\n".join(out) + "\n", encoding="utf-8")
 
@@ -378,14 +380,29 @@ class LLMConfig(BaseModel):
     base_url: str | None = None
 
 
+def _key_name(provider: str) -> str:
+    return f"LLM_KEY_{provider.upper()}"
+
+
+def _saved_key(env: dict, provider: str) -> str:
+    """Key tersimpan buat 1 provider: per-provider -> key aktif lama -> GEMINI_API_KEY (lama)."""
+    k = env.get(_key_name(provider)) or ""
+    if not k and provider == env.get("LLM_PROVIDER"):
+        k = env.get("LLM_API_KEY") or ""
+    if not k and provider == "gemini":
+        k = env.get("GEMINI_API_KEY") or ""
+    return k.strip()
+
+
 @app.get("/config/llm")
 def get_llm():
-    """Config LLM aktif + daftar provider (buat menu Pengaturan di app). Key TIDAK dibocorin."""
+    """Config LLM aktif + daftar provider + provider mana aja yang udah punya key. Key TIDAK dibocorin."""
     env = read_env()
     c = llm.resolve(env)
     return {
         "provider": c["provider"], "model": c["model"], "label": c["label"],
         "base_url": env.get("LLM_BASE_URL", ""), "has_key": bool(c["key"]),
+        "keys": {k: bool(_saved_key(env, k)) for k in llm.PROVIDERS},
         "providers": {k: {"label": v["label"], "models": v["models"],
                           "key_url": v["key_url"], "openai": v["openai"]}
                       for k, v in llm.PROVIDERS.items()},
@@ -394,12 +411,39 @@ def get_llm():
 
 @app.post("/config/llm")
 def set_llm(cfg: LLMConfig):
-    upd = {"LLM_PROVIDER": cfg.provider, "LLM_MODEL": cfg.model}
-    if cfg.api_key is not None:
-        upd["LLM_API_KEY"] = cfg.api_key
-    if cfg.base_url is not None:
-        upd["LLM_BASE_URL"] = cfg.base_url
+    """Jadiin provider/model ini otak analisa. Key disimpan PER provider (bisa gonta-ganti tanpa ngetik ulang)."""
+    p = llm.PROVIDERS.get(cfg.provider)
+    if not p:
+        raise HTTPException(400, "Provider gak dikenal.")
+    env = read_env()
+    upd: dict = {"LLM_PROVIDER": cfg.provider, "LLM_MODEL": cfg.model}
+    cur = env.get("LLM_PROVIDER")
+    if cur and env.get("LLM_API_KEY") and not env.get(_key_name(cur)):
+        upd[_key_name(cur)] = env["LLM_API_KEY"]   # migrasi: key lama jangan ilang pas ganti provider
+    key = (cfg.api_key or "").strip() or _saved_key(env, cfg.provider)
+    if not key and cfg.provider != "ollama":
+        raise HTTPException(400, f"API key {p['label']} belum ada.")
+    if cfg.api_key and cfg.api_key.strip():
+        upd[_key_name(cfg.provider)] = cfg.api_key.strip()
+    upd["LLM_API_KEY"] = key
+    # base URL cuma buat custom; provider lain balik ke URL bawaannya
+    upd["LLM_BASE_URL"] = (cfg.base_url or "") if cfg.provider == "custom" else ""
     write_env(upd)
+    return {"ok": True}
+
+
+@app.delete("/config/llm/key/{provider}")
+def delete_llm_key(provider: str):
+    """Hapus API key 1 provider. Key yang lagi dipakai analisa gak boleh dihapus."""
+    if provider not in llm.PROVIDERS:
+        raise HTTPException(400, "Provider gak dikenal.")
+    env = read_env()
+    if provider == env.get("LLM_PROVIDER"):
+        raise HTTPException(400, "Key ini lagi dipakai analisa. Ganti provider dulu, baru hapus.")
+    rm: dict = {_key_name(provider): None}
+    if provider == "gemini":
+        rm["GEMINI_API_KEY"] = None
+    write_env(rm)
     return {"ok": True}
 
 
@@ -407,14 +451,16 @@ def _env_for(provider: str, model: str | None, api_key: str | None, base_url: st
     """Salinan .env buat provider yang lagi DIPILIH di app (gak disimpan)."""
     env = read_env()
     if provider != env.get("LLM_PROVIDER"):
-        env.pop("LLM_API_KEY", None)   # key tersimpan punya provider lain -> jangan dipakai
+        env.pop("LLM_API_KEY", None)   # key aktif punya provider lain -> jangan dipakai
     env["LLM_PROVIDER"] = provider
     if model:
         env["LLM_MODEL"] = model
     if api_key:
-        env["LLM_API_KEY"] = api_key
+        env[_key_name(provider)] = env["LLM_API_KEY"] = api_key
     if base_url is not None:
         env["LLM_BASE_URL"] = base_url
+    elif provider != "custom":
+        env["LLM_BASE_URL"] = ""
     return env
 
 
