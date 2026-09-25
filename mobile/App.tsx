@@ -596,9 +596,14 @@ function SliceResult({ r }: { r: Slicing }) {
         <View key={p.ticker} style={styles.sliceRow}>
           <View style={[styles.sliceSwatch, { backgroundColor: PALET[i % PALET.length] }]} />
           <View style={styles.flex1}>
-            <Text style={styles.sliceTicker}>
-              {p.ticker.replace(".JK", "")} <Text style={styles.sliceLot}>{p.lot} lot @ {fmtInt(p.entry)}</Text>
-            </Text>
+            <View style={styles.sliceHeadRow}>
+              <Text style={styles.sliceTicker}>{p.ticker.replace(".JK", "")}</Text>
+              <View style={[styles.slicePill, styles.slicePillBuy]}>
+                <Text style={[styles.slicePillText, { color: "#38bdf8" }]}>
+                  Beli {p.lot} lot @ {fmtInt(p.entry)}
+                </Text>
+              </View>
+            </View>
             <View style={styles.slicePills}>
               {p.target != null && untung(p) > 0 ? (
                 <View style={[styles.slicePill, styles.slicePillUp]}>
@@ -613,7 +618,6 @@ function SliceResult({ r }: { r: Slicing }) {
                 </Text>
               </View>
             </View>
-            {p.note ? <Text style={styles.sliceSub}>{p.note}</Text> : null}
           </View>
           <View style={styles.sliceRight}>
             <Text style={styles.sliceVal}>Rp{fmtInt(p.value)}</Text>
@@ -651,10 +655,7 @@ function SliceResult({ r }: { r: Slicing }) {
               <Text style={styles.ruleItemText}>{t}</Text>
             </View>
           ))}
-          <Text style={styles.sliceFoot}>
-            Ini hitungan otomatis, bukan saran beli.{" "}
-            <Text style={styles.sliceFootStrong}>KEPUTUSAN TETAP DI TANGAN SENDIRI.</Text>
-          </Text>
+          <Text style={styles.sliceFootCenter}>KEPUTUSAN TETAP DI TANGAN SENDIRI</Text>
         </View>
       ) : null}
     </View>
@@ -1725,13 +1726,13 @@ const styles = StyleSheet.create({
   sliceRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 9, borderTopWidth: 1, borderTopColor: "#1e2731", marginTop: 2 },
   sliceSwatch: { width: 6, height: 30, borderRadius: 3 },
   sliceTicker: { color: "#e6edf3", fontSize: 15, fontWeight: "800" },
-  sliceLot: { color: "#8b95a1", fontSize: 12, fontWeight: "600" },
   sliceSub: { color: "#7d8792", fontSize: 11, marginTop: 2 },
   sliceRight: { alignItems: "flex-end" },
   sliceVal: { color: "#e6edf3", fontSize: 14, fontWeight: "800" },
   sliceNote: { color: "#8b95a1", fontSize: 12, lineHeight: 17, marginTop: 10 },
-  sliceFoot: { color: "#56606c", fontSize: 11, lineHeight: 16, marginTop: 8 },
-  sliceFootStrong: { color: "#8b95a1", fontWeight: "800", letterSpacing: 0.3 },
+  sliceFootCenter: { color: "#8b95a1", fontSize: 11, fontWeight: "800", letterSpacing: 0.5, textAlign: "center", marginTop: 4 },
+  sliceHeadRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 },
+  slicePillBuy: { borderColor: "rgba(56,189,248,0.35)", backgroundColor: "rgba(56,189,248,0.08)" },
   sliceStats: { flexDirection: "row", flexWrap: "wrap", marginTop: 12, rowGap: 12 },
   sliceStat: { width: "50%" },
   sliceStatVal: { color: "#e6edf3", fontSize: 16, fontWeight: "800", marginTop: 2 },
