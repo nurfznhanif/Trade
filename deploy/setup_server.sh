@@ -165,7 +165,7 @@ systemctl reload nginx
 echo "==> [7/7] HTTPS (certbot, cuma buat $DOMAIN)"
 SCHEME=https
 certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email --redirect -q \
-  || { SCHEME=http; echo "[!] Sertifikat HTTPS gagal (kuota sslip.io kadang habis). Sementara pakai http://, jalanin ulang script nanti."; }
+  || { SCHEME=http; echo "[!] Sertifikat HTTPS gagal — lihat pesan certbot di atas (mis. certbot lain lagi jalan, atau kuota sslip.io). Sementara http://; ulangi: certbot --nginx -d $DOMAIN"; }
 
 sleep 2
 echo
