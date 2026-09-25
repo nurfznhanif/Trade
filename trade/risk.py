@@ -88,13 +88,18 @@ def allocate(capital: float, calls: list[dict], risk_pct: float = 0.02, max_pct:
             continue
         cost = lots * per_lot
         cash -= cost
+        t = c.get("target")
         picks.append({"ticker": c["ticker"], "action": c.get("action"), "conviction": c.get("conviction"),
-                      "lot": lots, "entry": e, "stop": s, "target": c.get("target"),
+                      "lot": lots, "entry": e, "stop": s, "target": t,
                       "value": round(cost), "pct": cost / capital,
-                      "risk_rp": round(lots * lot * (e - s)), "rr": round(-neg_rr, 2), "note": note})
+                      "risk_rp": round(lots * lot * (e - s)),                                   # rugi kalau kena stop
+                      "reward_rp": round(lots * lot * (t - e)) if t and t > e else 0,           # untung kalau sampai target
+                      "rr": round(-neg_rr, 2), "note": note})
     risk_total = sum(p["risk_rp"] for p in picks)
+    reward_total = sum(p["reward_rp"] for p in picks)
     return {"modal": capital, "used": round(capital - cash), "cash": round(cash),
             "risk_rp": risk_total, "risk_pct": risk_total / capital if capital else 0.0,
+            "reward_rp": reward_total, "reward_pct": reward_total / capital if capital else 0.0,
             "picks": picks, "skipped": skipped,
             "rules": {"risk_pct": risk_pct, "max_pct": max_pct, "max_pos": max_pos, "min_pct": min_pct}}
 

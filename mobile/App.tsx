@@ -536,6 +536,34 @@ function SlicingCard({ live }: { live: boolean }) {
   );
 }
 
+// Rp ringkas: 1.250.000 -> "1,25jt", 52.300 -> "52,3rb"
+function fmtRpShort(n: number): string {
+  const a = Math.abs(n);
+  if (a >= 1e6) return (n / 1e6).toFixed(2).replace(/\.?0+$/, "").replace(".", ",") + "jt";
+  if (a >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, "").replace(".", ",") + "rb";
+  return fmtInt(n);
+}
+const pctTxt = (x: number) => (x * 100).toFixed(1).replace(".", ",") + "%";
+
+function SliceStat({ label, val, sub, color }: { label: string; val: string; sub?: string; color?: string }) {
+  return (
+    <View style={styles.sliceStat}>
+      <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={[styles.sliceStatVal, color ? { color } : null]}>{val}</Text>
+      {sub ? <Text style={[styles.sliceSub, color ? { color } : null]}>{sub}</Text> : null}
+    </View>
+  );
+}
+
+function RuleChip({ icon, text }: { icon: IconName; text: string }) {
+  return (
+    <View style={styles.ruleChip}>
+      <Ionicons name={icon} size={12} color="#8b95a1" />
+      <Text style={styles.ruleText}>{text}</Text>
+    </View>
+  );
+}
+
 function SliceResult({ r }: { r: Slicing }) {
   const usedPct = r.modal ? r.used / r.modal : 0;
   const more = r.skipped.length - 3;
@@ -547,13 +575,22 @@ function SliceResult({ r }: { r: Slicing }) {
         ))}
         <View style={{ flex: Math.max(0, 1 - usedPct), backgroundColor: "#1e2731" }} />
       </View>
-      <View style={styles.metricRow}>
-        <Metric label="Terpakai" val={`Rp${fmtInt(r.used)}`} />
-        <Metric label="Kas" val={`Rp${fmtInt(r.cash)}`} />
-        <Metric label="Rugi maks" val={`Rp${fmtInt(r.risk_rp)}`} color="#ef4444" />
+
+      <View style={styles.sliceStats}>
+        <SliceStat label="Terpakai" val={`Rp${fmtRpShort(r.used)}`} sub={pctTxt(usedPct)} />
+        <SliceStat label="Kas" val={`Rp${fmtRpShort(r.cash)}`} sub={pctTxt(1 - usedPct)} />
+        <SliceStat label="Untung di target" val={`+Rp${fmtRpShort(r.reward_rp)}`} sub={`+${pctTxt(r.reward_pct)}`} color="#22c55e" />
+        <SliceStat label="Rugi maks (kena stop)" val={`−Rp${fmtRpShort(r.risk_rp)}`} sub={`−${pctTxt(r.risk_pct)}`} color="#ef4444" />
       </View>
+
       {r.risk_off ? (
-        <Text style={styles.sliceNote}>Pasar RISK-OFF — risiko per saham dipotong setengah, sisanya jadi kas.</Text>
+        <View style={styles.sliceCallout}>
+          <Ionicons name="shield-half-outline" size={16} color="#f59e0b" />
+          <Text style={styles.sliceCalloutText}>
+            <Text style={styles.sliceCalloutStrong}>Mode hati-hati · </Text>
+            pasar lagi RISK-OFF, ukuran tiap saham dipotong setengah. Sisanya disimpan jadi kas.
+          </Text>
+        </View>
       ) : null}
 
       {r.picks.map((p, i) => (
@@ -563,9 +600,21 @@ function SliceResult({ r }: { r: Slicing }) {
             <Text style={styles.sliceTicker}>
               {p.ticker.replace(".JK", "")} <Text style={styles.sliceLot}>{p.lot} lot @ {fmtInt(p.entry)}</Text>
             </Text>
-            <Text style={styles.sliceSub}>
-              stop {fmtInt(p.stop)} · rugi maks Rp{fmtInt(p.risk_rp)}{p.note ? ` · ${p.note}` : ""}
-            </Text>
+            <View style={styles.slicePills}>
+              {p.reward_rp > 0 && p.target != null ? (
+                <View style={[styles.slicePill, styles.slicePillUp]}>
+                  <Text style={[styles.slicePillText, { color: "#22c55e" }]}>
+                    T {fmtInt(p.target)} · +Rp{fmtRpShort(p.reward_rp)}
+                  </Text>
+                </View>
+              ) : null}
+              <View style={[styles.slicePill, styles.slicePillDown]}>
+                <Text style={[styles.slicePillText, { color: "#ef4444" }]}>
+                  S {fmtInt(p.stop)} · −Rp{fmtRpShort(p.risk_rp)}
+                </Text>
+              </View>
+            </View>
+            {p.note ? <Text style={styles.sliceSub}>{p.note}</Text> : null}
           </View>
           <View style={styles.sliceRight}>
             <Text style={styles.sliceVal}>Rp{fmtInt(p.value)}</Text>
@@ -581,10 +630,13 @@ function SliceResult({ r }: { r: Slicing }) {
           {more > 0 ? ` +${more} lainnya` : ""}
         </Text>
       ) : null}
-      <Text style={styles.sliceFoot}>
-        Hitungan aturan risiko: maks {Math.round(r.rules.max_pct * 100)}% modal per saham, rugi maks ~
-        {(r.rules.risk_pct * 100).toFixed(0)}% modal per saham kalau kena stop. Bukan saran beli.
-      </Text>
+
+      <View style={styles.ruleRow}>
+        <RuleChip icon="pie-chart-outline" text={`maks ${Math.round(r.rules.max_pct * 100)}%/saham`} />
+        <RuleChip icon="trending-down-outline" text={`rugi ~${(r.rules.risk_pct * 100).toFixed(0)}%/saham`} />
+        <RuleChip icon="layers-outline" text={`maks ${r.rules.max_pos} saham`} />
+      </View>
+      <Text style={styles.sliceFoot}>Hitungan otomatis dari aturan risiko — bukan saran beli.</Text>
     </View>
   );
 }
@@ -1658,7 +1710,21 @@ const styles = StyleSheet.create({
   sliceRight: { alignItems: "flex-end" },
   sliceVal: { color: "#e6edf3", fontSize: 14, fontWeight: "800" },
   sliceNote: { color: "#8b95a1", fontSize: 12, lineHeight: 17, marginTop: 10 },
-  sliceFoot: { color: "#56606c", fontSize: 11, lineHeight: 16, marginTop: 10 },
+  sliceFoot: { color: "#56606c", fontSize: 11, lineHeight: 16, marginTop: 8 },
+  sliceStats: { flexDirection: "row", flexWrap: "wrap", marginTop: 12, rowGap: 12 },
+  sliceStat: { width: "50%" },
+  sliceStatVal: { color: "#e6edf3", fontSize: 16, fontWeight: "800", marginTop: 2 },
+  sliceCallout: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginTop: 14, padding: 10, borderRadius: 10, backgroundColor: "rgba(245,158,11,0.08)", borderWidth: 1, borderColor: "rgba(245,158,11,0.30)" },
+  sliceCalloutText: { flex: 1, color: "#c2cbd4", fontSize: 12, lineHeight: 17 },
+  sliceCalloutStrong: { color: "#fbbf24", fontWeight: "800" },
+  slicePills: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 5 },
+  slicePill: { borderRadius: 6, borderWidth: 1, paddingHorizontal: 6, paddingVertical: 2 },
+  slicePillUp: { borderColor: "rgba(34,197,94,0.35)", backgroundColor: "rgba(34,197,94,0.08)" },
+  slicePillDown: { borderColor: "rgba(239,68,68,0.35)", backgroundColor: "rgba(239,68,68,0.08)" },
+  slicePillText: { fontSize: 11, fontWeight: "700" },
+  ruleRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 14 },
+  ruleChip: { flexDirection: "row", alignItems: "center", gap: 4, borderWidth: 1, borderColor: "#1e2731", backgroundColor: "#0e141b", borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
+  ruleText: { color: "#8b95a1", fontSize: 11, fontWeight: "600" },
 
   // ---- Jurnal ----
   jSum: { backgroundColor: "#121821", borderRadius: 14, padding: 14, marginTop: 14, borderWidth: 1, borderColor: "#1e2731" },

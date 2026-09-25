@@ -280,6 +280,7 @@ export interface SlicePick {
   value: number; // Rp, termasuk fee beli
   pct: number; // porsi dari modal (0..1)
   risk_rp: number; // rugi kalau kena stop
+  reward_rp: number; // untung kalau sampai target
   rr: number;
   note: string;
 }
@@ -289,6 +290,8 @@ export interface Slicing {
   cash: number;
   risk_rp: number;
   risk_pct: number;
+  reward_rp: number;
+  reward_pct: number;
   risk_off: boolean;
   picks: SlicePick[];
   skipped: { ticker: string; why: string }[];
