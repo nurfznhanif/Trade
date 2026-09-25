@@ -148,7 +148,7 @@ export default function App() {
           </Pressable>
         </View>
         <Text style={styles.sub}>
-          data {data.generated} · {live ? "LIVE" : "sampel"} · {data.engine}
+          data {data.generated}
         </Text>
         {conn === "cari" ? <Text style={styles.sub}>Nyari server di PC…</Text> : null}
         {conn === "mati" ? <OfflineCard onRetry={connect} /> : null}
@@ -247,7 +247,9 @@ export default function App() {
         {nav === "berita" && <NewsScreen />}
         {nav === "chart" && <ChartScreen data={data} />}
 
-        {nav === "pengaturan" && <SettingsScreen onConnected={connect} />}
+        {nav === "pengaturan" && (
+          <SettingsScreen connected={conn === "cari" ? null : conn === "ok" && live} onConnected={connect} />
+        )}
 
         <Text style={styles.footer}>
           Trade IDX · {conn === "ok" ? `tersambung ke server (${API_BASE})` : "belum tersambung ke server"}
@@ -1134,120 +1136,201 @@ function ConfirmDelete({ t, onDone, onCancel }: { t: JournalTrade; onDone: () =>
   );
 }
 
-function SettingsScreen({ onConnected }: { onConnected: () => void }) {
+// dropdown sederhana (buka-tutup di tempat) — jalan sama di Android & web
+function Dropdown({
+  label, value, options, onChange, placeholder, disabled,
+}: {
+  label: string; value: string; options: { value: string; label: string }[];
+  onChange: (v: string) => void; placeholder: string; disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const cur = options.find((o) => o.value === value);
+  return (
+    <View>
+      <Text style={styles.settLabel}>{label}</Text>
+      <Pressable
+        style={[styles.input, styles.ddBox, open && styles.ddBoxOpen, disabled && styles.ddDisabled]}
+        onPress={() => !disabled && setOpen((o) => !o)}
+      >
+        <Text style={[styles.ddText, !cur && styles.ddPlaceholder]} numberOfLines={1}>
+          {cur ? cur.label : placeholder}
+        </Text>
+        <Ionicons name={open ? "chevron-up" : "chevron-down"} size={16} color="#7d8792" />
+      </Pressable>
+      {open ? (
+        <View style={styles.ddList}>
+          {options.map((o) => {
+            const on = o.value === value;
+            return (
+              <Pressable
+                key={o.value}
+                style={({ pressed }) => [styles.ddItem, on && styles.ddItemOn, pressed && styles.btnPressed]}
+                onPress={() => { onChange(o.value); setOpen(false); }}
+              >
+                <Text style={[styles.ddItemText, on && styles.ddItemTextOn]}>{o.label}</Text>
+                {on ? <Ionicons name="checkmark" size={16} color="#2dd4bf" /> : null}
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function SettingsScreen({ connected, onConnected }: { connected: boolean | null; onConnected: () => void }) {
   const [info, setInfo] = useState<LlmInfo | null>(null);
-  const [prov, setProv] = useState("gemini");
+  const [prov, setProv] = useState("");
   const [model, setModel] = useState("");
   const [key, setKey] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
   const [base, setBase] = useState(API_BASE);
   const [tok, setTok] = useState(API_TOKEN);
-  const [msg, setMsg] = useState("");
+  const [showConn, setShowConn] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; ok?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
 
   const loadConfig = () =>
     getLlmConfig()
-      .then((i) => { setInfo(i); setProv(i.provider); setModel(i.model); })
-      .catch((e) => setMsg("Server belum nyambung: " + String(e?.message || e)));
+      .then((i) => { setInfo(i); setProv(i.provider); setModel(i.model); setBaseUrl(i.base_url); })
+      .catch(() => setInfo(null));
 
-  const autoFind = async () => {
-    setBusy(true); setMsg("Nyari server…");
+  useEffect(() => { loadConfig(); }, []);
+
+  // koneksi manual (cadangan): simpan alamat + kunci, lalu sambung ulang
+  const connect = async () => {
+    setBusy(true); setMsg({ text: "Nyambungin…" });
     await saveApiToken(tok);
+    if (base.trim()) await saveApiBase(base);
     loadApiBase()
       .then((hit) => {
-        if (hit) { setBase(hit); setMsg("Ketemu: " + hit); loadConfig(); onConnected(); }
-        else setMsg("Server gak ketemu. Cek alamat & kunci akses, atau pastikan run_backend.bat jalan di PC.");
+        if (hit) { setBase(hit); setMsg(null); setShowConn(false); loadConfig(); onConnected(); }
+        else setMsg({ text: "Server gak ketemu. Cek alamat & kunci akses.", ok: false });
       })
       .finally(() => setBusy(false));
   };
 
-  useEffect(() => { loadConfig(); }, []);
-
-  const providers = info ? Object.entries(info.providers) : [];
   const pinfo = info?.providers[prov];
+  const label = pinfo?.label || prov;
+  const provOpts = info ? Object.entries(info.providers).map(([k, v]) => ({ value: k, label: v.label })) : [];
+  const models = pinfo ? [...pinfo.models] : [];
+  if (info && prov === info.provider && info.model && !models.includes(info.model)) models.unshift(info.model);
+  const modelOpts = models.map((m) => ({ value: m, label: m }));
+  const savedKey = !!info?.has_key && prov === info?.provider;
+  const needKey = prov !== "" && prov !== "ollama";
 
-  const save = async () => {
-    setBusy(true); setMsg("");
-    await saveApiBase(base);
-    await saveApiToken(tok);
-    setLlmConfig({ provider: prov, model: model.trim(), api_key: key.trim() || undefined })
-      .then(() => { setMsg("Tersimpan. Provider aktif: " + (pinfo?.label || prov)); setKey(""); loadConfig(); onConnected(); })
-      .catch((e) => setMsg("Gagal simpan: " + String(e?.message || e)))
+  // ganti provider -> model ikut reset ke model pertama provider itu
+  const pickProv = (k: string) => {
+    setProv(k);
+    setModel(info?.providers[k]?.models[0] || "");
+    setKey("");
+    setMsg(null);
+  };
+
+  const cfg = () => ({
+    provider: prov,
+    model: model.trim(),
+    api_key: key.trim() || undefined,
+    base_url: prov === "custom" ? baseUrl.trim() : undefined,
+  });
+
+  const save = () => {
+    if (!model.trim()) return setMsg({ text: "Pilih model dulu.", ok: false });
+    if (needKey && !savedKey && !key.trim()) return setMsg({ text: `Isi API key ${label} dulu.`, ok: false });
+    setBusy(true); setMsg(null);
+    setLlmConfig(cfg())
+      .then(() => { setMsg({ text: `Tersimpan — analisa pakai ${label} / ${model.trim()}.`, ok: true }); setKey(""); loadConfig(); })
+      .catch((e) => setMsg({ text: "Gagal simpan: " + String(e?.message || e), ok: false }))
       .finally(() => setBusy(false));
   };
-  const test = async () => {
-    setBusy(true); setMsg("Nyoba nyambung…");
-    await saveApiBase(base);
-    await saveApiToken(tok);
-    testLlm()
-      .then((r) => { setMsg(r.message); if (r.ok) { loadConfig(); onConnected(); } })
-      .catch((e) => setMsg("Gagal tes: " + String(e?.message || e)))
+
+  const test = () => {
+    if (!model.trim()) return setMsg({ text: "Pilih model dulu.", ok: false });
+    setBusy(true); setMsg({ text: `Ngetes ${label} / ${model.trim()}…` });
+    testLlm(cfg())
+      .then((r) => setMsg({ text: r.message, ok: r.ok }))
+      .catch((e) => setMsg({ text: "Gagal tes: " + String(e?.message || e), ok: false }))
       .finally(() => setBusy(false));
   };
+
+  const connColor = connected ? "#22c55e" : connected === null ? "#7d8792" : "#f59e0b";
+  const connText = connected ? "Tersambung ke server" : connected === null ? "Nyari server…" : "Belum tersambung";
 
   return (
     <View style={{ marginTop: 8 }}>
       <Text style={styles.settTitle}>Pengaturan</Text>
 
-      <Text style={styles.settSection}>KONEKSI KE SERVER</Text>
-      <Text style={styles.settSub}>
-        App ini cuma layar — data & analisa dikerjain server (cloud, atau PC lewat run_backend.bat).
-        Alamatnya dicari otomatis; isi manual cuma kalau gagal.
-      </Text>
-      <Text style={styles.settLabel}>Alamat Server</Text>
-      <TextInput style={styles.input} value={base} onChangeText={setBase}
-        autoCapitalize="none" autoCorrect={false}
-        placeholder="https://… atau http://192.168.x.x:8000" placeholderTextColor="#56606c" />
-      <Text style={styles.settLabel}>Kunci Akses</Text>
-      <TextInput style={styles.input} value={tok} onChangeText={setTok} secureTextEntry
-        autoCapitalize="none" autoCorrect={false}
-        placeholder="cuma buat server cloud" placeholderTextColor="#56606c" />
-      <Pressable style={({ pressed }) => [styles.actBtn, styles.findBtn, pressed && styles.btnPressed]}
-        onPress={autoFind} disabled={busy}>
-        <Ionicons name="search" size={14} color="#2dd4bf" />
-        <Text style={[styles.actBtnText, { color: "#2dd4bf" }]}>Cari otomatis</Text>
-      </Pressable>
-
-      <Text style={styles.settSection}>OTAK ANALISA (LLM)</Text>
-      <Text style={styles.settSub}>Bongkar-pasang otak analisa — gak terpaku ke Gemini.</Text>
-
-      <Text style={styles.settLabel}>Provider</Text>
-      <View style={styles.chips}>
-        {providers.map(([k, v]) => (
-          <Pressable key={k} onPress={() => { setProv(k); setModel(v.models[0] || ""); }}
-            style={[styles.chip, prov === k && styles.chipOn]}>
-            <Text style={[styles.chipText, prov === k && styles.chipTextOn]}>{v.label}</Text>
-          </Pressable>
-        ))}
-        {providers.length === 0 ? <Text style={styles.hint}>Sambungin backend dulu buat lihat daftar provider.</Text> : null}
+      <Text style={styles.settSection}>KONEKSI</Text>
+      <View style={styles.connRow}>
+        <View style={[styles.jDot, { backgroundColor: connColor }]} />
+        <Text style={styles.connText}>{connText}</Text>
+        <Pressable onPress={() => setShowConn((s) => !s)} hitSlop={8}>
+          <Text style={styles.connLink}>{showConn ? "Tutup" : "Ubah"}</Text>
+        </Pressable>
       </View>
-
-      <Text style={styles.settLabel}>Model</Text>
-      <TextInput style={styles.input} value={model} onChangeText={setModel}
-        autoCapitalize="none" autoCorrect={false}
-        placeholder="nama model" placeholderTextColor="#56606c" />
-      {pinfo && pinfo.models.length > 0 ? (
-        <Text style={styles.hint}>Contoh: {pinfo.models.join(" · ")}</Text>
+      {showConn || connected === false ? (
+        <>
+          <Text style={styles.settLabel}>Alamat Server</Text>
+          <TextInput style={styles.input} value={base} onChangeText={setBase}
+            autoCapitalize="none" autoCorrect={false}
+            placeholder="https://…" placeholderTextColor="#56606c" />
+          <Text style={styles.settLabel}>Kunci Akses</Text>
+          <TextInput style={styles.input} value={tok} onChangeText={setTok} secureTextEntry
+            autoCapitalize="none" autoCorrect={false}
+            placeholder="kunci dari server" placeholderTextColor="#56606c" />
+          <Pressable style={({ pressed }) => [styles.actBtn, styles.findBtn, pressed && styles.btnPressed]}
+            onPress={connect} disabled={busy}>
+            <Ionicons name="link" size={14} color="#2dd4bf" />
+            <Text style={[styles.actBtnText, { color: "#2dd4bf" }]}>Sambungkan</Text>
+          </Pressable>
+        </>
       ) : null}
 
-      <Text style={styles.settLabel}>
-        API Key{info?.has_key ? " (udah ada — isi cuma kalau mau ganti)" : ""}
-      </Text>
-      <TextInput style={styles.input} value={key} onChangeText={setKey} secureTextEntry
-        autoCapitalize="none" autoCorrect={false}
-        placeholder="tempel API key" placeholderTextColor="#56606c" />
-      {pinfo && pinfo.key_url !== "-" ? (
-        <Text style={styles.hint}>Ambil key: {pinfo.key_url}</Text>
+      <Text style={styles.settSection}>OTAK ANALISA</Text>
+      <Dropdown label="Provider" value={prov} options={provOpts} onChange={pickProv}
+        placeholder={info ? "Pilih provider" : "Sambungkan server dulu"} disabled={!info} />
+      {modelOpts.length > 0 ? (
+        <Dropdown label="Model" value={model} options={modelOpts} onChange={setModel}
+          placeholder="Pilih model" disabled={!prov} />
+      ) : prov ? (
+        <>
+          <Text style={styles.settLabel}>Model</Text>
+          <TextInput style={styles.input} value={model} onChangeText={setModel}
+            autoCapitalize="none" autoCorrect={false}
+            placeholder="nama model" placeholderTextColor="#56606c" />
+        </>
+      ) : null}
+      {prov === "custom" ? (
+        <>
+          <Text style={styles.settLabel}>Base URL</Text>
+          <TextInput style={styles.input} value={baseUrl} onChangeText={setBaseUrl}
+            autoCapitalize="none" autoCorrect={false}
+            placeholder="https://…/v1" placeholderTextColor="#56606c" />
+        </>
+      ) : null}
+      {needKey ? (
+        <>
+          <Text style={styles.settLabel}>API Key</Text>
+          <TextInput style={styles.input} value={key} onChangeText={setKey} secureTextEntry
+            autoCapitalize="none" autoCorrect={false}
+            placeholder={savedKey ? "tersimpan — isi cuma kalau mau ganti" : `tempel API key ${label}`}
+            placeholderTextColor="#56606c" />
+        </>
       ) : null}
 
       <View style={styles.settBtns}>
-        <Pressable style={[styles.settBtn, styles.settBtnPri]} onPress={save} disabled={busy}>
+        <Pressable style={[styles.settBtn, styles.settBtnPri]} onPress={save} disabled={busy || !info}>
           <Text style={styles.settBtnPriText}>{busy ? "…" : "Simpan"}</Text>
         </Pressable>
-        <Pressable style={[styles.settBtn, styles.settBtnGhost]} onPress={test} disabled={busy}>
+        <Pressable style={[styles.settBtn, styles.settBtnGhost]} onPress={test} disabled={busy || !info}>
           <Text style={styles.settBtnGhostText}>Tes Koneksi</Text>
         </Pressable>
       </View>
-      {msg ? <Text style={styles.settMsg}>{msg}</Text> : null}
+      {msg ? (
+        <Text style={[styles.settMsg, msg.ok === true && styles.msgOk, msg.ok === false && styles.msgErr]}>
+          {msg.text}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -1260,9 +1343,25 @@ const styles = StyleSheet.create({
 
   // Pengaturan (Settings)
   settTitle: { color: "#e6edf3", fontSize: 20, fontWeight: "800" },
-  settSub: { color: "#7d8792", fontSize: 13, marginTop: 3, lineHeight: 19 },
   settSection: { color: "#2dd4bf", fontSize: 11, fontWeight: "800", letterSpacing: 1, marginTop: 24 },
   findBtn: { alignSelf: "flex-start", marginTop: 10, borderColor: "#2dd4bf55" },
+  connRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10, backgroundColor: "#121821", borderWidth: 1, borderColor: "#1e2731", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11 },
+  connText: { color: "#e6edf3", fontSize: 14, fontWeight: "600", flex: 1 },
+  connLink: { color: "#2dd4bf", fontSize: 13, fontWeight: "700" },
+  msgOk: { color: "#22c55e" },
+  msgErr: { color: "#fca5a5" },
+
+  // Dropdown
+  ddBox: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  ddBoxOpen: { borderColor: "#2dd4bf" },
+  ddDisabled: { opacity: 0.5 },
+  ddText: { color: "#e6edf3", fontSize: 14, flex: 1 },
+  ddPlaceholder: { color: "#56606c" },
+  ddList: { marginTop: 6, backgroundColor: "#0e141b", borderWidth: 1, borderColor: "#1e2731", borderRadius: 10, overflow: "hidden" },
+  ddItem: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#161d26" },
+  ddItemOn: { backgroundColor: "rgba(45,212,191,0.08)" },
+  ddItemText: { color: "#c2cbd4", fontSize: 14 },
+  ddItemTextOn: { color: "#2dd4bf", fontWeight: "700" },
 
   // Kartu "server di PC belum nyala"
   offCard: { backgroundColor: "rgba(245,158,11,0.08)", borderRadius: 14, padding: 14, marginTop: 12, borderWidth: 1, borderColor: "rgba(245,158,11,0.35)" },
@@ -1275,7 +1374,6 @@ const styles = StyleSheet.create({
   settLabel: { color: "#8b95a1", fontSize: 11, fontWeight: "700", letterSpacing: 0.5, marginTop: 16, marginBottom: 6 },
   input: { backgroundColor: "#121821", borderWidth: 1, borderColor: "#1e2731", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, color: "#e6edf3", fontSize: 14 },
   hint: { color: "#56606c", fontSize: 11, marginTop: 5 },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { borderWidth: 1, borderColor: "#1e2731", backgroundColor: "#121821", borderRadius: 999, paddingHorizontal: 13, paddingVertical: 7 },
   chipOn: { borderColor: "#2dd4bf", backgroundColor: "rgba(45,212,191,0.12)" },
   chipText: { color: "#8b95a1", fontSize: 12, fontWeight: "700" },

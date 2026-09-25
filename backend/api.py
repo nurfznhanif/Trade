@@ -404,6 +404,16 @@ def set_llm(cfg: LLMConfig):
 
 
 @app.post("/config/llm/test")
-def test_llm():
-    ok, msg = llm.test_connection(read_env())
+def test_llm(cfg: LLMConfig | None = None):
+    """Tes provider/model yang lagi DIPILIH di app (belum perlu disimpan). Tanpa body = tes yang tersimpan."""
+    env = read_env()
+    if cfg:
+        if cfg.provider != env.get("LLM_PROVIDER"):
+            env.pop("LLM_API_KEY", None)   # key tersimpan punya provider lain -> jangan dipakai
+        env["LLM_PROVIDER"], env["LLM_MODEL"] = cfg.provider, cfg.model
+        if cfg.api_key:
+            env["LLM_API_KEY"] = cfg.api_key
+        if cfg.base_url is not None:
+            env["LLM_BASE_URL"] = cfg.base_url
+    ok, msg = llm.test_connection(env)
     return {"ok": ok, "message": msg}

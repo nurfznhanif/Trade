@@ -122,8 +122,11 @@ export const setLlmConfig = (cfg: {
   body: JSON.stringify(cfg),
 });
 
-export const testLlm = (): Promise<{ ok: boolean; message: string }> =>
-  req("/config/llm/test", { method: "POST" });
+// tes provider/model yang lagi DIPILIH (belum perlu disimpan)
+export const testLlm = (cfg?: {
+  provider: string; model: string; api_key?: string; base_url?: string;
+}): Promise<{ ok: boolean; message: string }> =>
+  req("/config/llm/test", cfg ? json("POST", cfg) : { method: "POST" });
 
 // ---- Sinyal mesin (tab Sinyal) ----
 export interface Signal {
