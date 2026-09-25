@@ -167,7 +167,8 @@ Skema WAJIB (JSON valid, TANPA markdown/```):
 {
   "generated": "YYYY-MM-DD",
   "engine": "Gemini (LLM) — baca data + berita",
-  "macro": "1-3 kalimat: regime IHSG + tema panas + sikap + status MSCI",
+  "regime": "RISK-ON|RISK-OFF|NETRAL",
+  "macro": "cerita pasar, lihat ATURAN MACRO di bawah",
   "calls": [
     {"ticker":"XXXX.JK","action":"BELI|BELI (tenang)|BELI (spekulatif)|TUNGGU PULLBACK|HINDARI",
      "conviction":"Tinggi|Sedang-Tinggi|Sedang|-","flag":"good|neutral|caution|danger",
@@ -180,6 +181,18 @@ Skema WAJIB (JSON valid, TANPA markdown/```):
 }
 entry/target/stop = integer; HINDARI -> null. Kalau tidak ada posisi terbuka, "positions": [].
 JANGAN isi field "lot" — sizing dihitung terpisah oleh kode.
+
+ATURAN MACRO (dibaca investor ritel di HP, harus ENAK DIBACA kayak cerita, BUKAN laporan kilat):
+- 2-3 paragraf pendek (2-3 kalimat per paragraf), pisahkan paragraf pakai "\\n\\n".
+  Paragraf 1: lagi kayak apa pasar sekarang & kenapa (bahasa sehari-hari).
+  Paragraf 2: tema/sentimen yang lagi jalan (sektor panas, arus asing, MSCI kalau relevan).
+  Paragraf 3: artinya buat kita & sikap yang disarankan.
+- JANGAN deretin angka beruntun (angka makro udah tampil di kartu terpisah). Sebut angka cuma
+  kalau penting & langsung jelasin artinya (mis. "rupiah melemah ke 17.875 per dolar — bikin
+  saham importir tertekan").
+- Istilah teknis dijelasin: "MA200" -> "rata-rata harga 200 hari", "risk-off" -> "investor lagi
+  main aman". Jangan pakai label "(jelek)"/"(bagus)".
+- "regime" diisi terpisah (RISK-ON/RISK-OFF/NETRAL), gak perlu ditulis kapital di cerita.
 """
 
 RULES = """
@@ -208,7 +221,7 @@ Level & exit:
 - target = CHECKPOINT pertama (bukan jual mati); reason ingatkan TRAILING (geser stop naik), jangan jual pas target.
 - Data fundamental yfinance absurd (divyield/PBV/DER ngaco) -> ABAIKAN, sebut kalau relevan.
 - BIG CAP (dari lensa) WAJIB dinilai walau mesin HOLD: overbought -> TUNGGU; murah+katalis konkret -> boleh BELI.
-- MSCI musim (near) -> ingatkan di macro: arus asing big cap bisa gejolak (teknikal).
+- MSCI musim (near) -> ceritain di macro: arus asing big cap bisa gejolak (teknikal).
 - reason 1-2 kalimat, konkret dari data. Beri verdict posisi terbuka juga.
 Nilai ~15-20 kandidat teratas + semua big cap.
 """

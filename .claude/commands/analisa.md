@@ -55,7 +55,9 @@ IHSG belum ada di DB, jadi tone makro dibaca dari berita.
 {
   "generated": "YYYY-MM-DD",
   "engine": "Claude (LLM) — baca data folder + artikel asli",
-  "macro": "ringkas: arah pasar + tema panas + sikap",
+  "generated_at": "ISO waktu sekarang, mis. 2026-09-25T05:10:00+07:00",
+  "regime": "RISK-ON|RISK-OFF|NETRAL",
+  "macro": "cerita pasar 2-3 paragraf (lihat aturan MACRO di bawah)",
   "calls": [
     {"ticker":"XXXX.JK","action":"BELI","conviction":"Tinggi","flag":"good",
      "entry":1000,"target":1200,"stop":950,"reason":"1-2 kalimat, WAJIB sebut temuan dari ISI artikel"}
@@ -65,6 +67,11 @@ IHSG belum ada di DB, jadi tone makro dibaca dari berita.
 - `action`: `BELI` / `BELI (tenang)` / `BELI (spekulatif)` / `TUNGGU PULLBACK` / `HINDARI`
 - `flag`: `good` / `neutral` / `caution` / `danger` · `conviction`: `Tinggi` / `Sedang-Tinggi` / `Sedang` / `-`
 - entry/target/stop = integer (HINDARI → `null`).
+- **`macro` = CERITA, bukan laporan kilat** (dibaca Bapak di HP): 2-3 paragraf pendek dipisah `\n\n`.
+  Paragraf 1: kondisi pasar & kenapa; paragraf 2: tema/sentimen (sektor panas, asing, MSCI); paragraf 3:
+  artinya buat kita & sikap. JANGAN deretin angka beruntun (angka makro udah ada di kartu app) —
+  angka cuma kalau penting + jelasin artinya. Istilah teknis dijelasin (MA200 → rata-rata 200 hari).
+  Regime ditulis di field `regime`, bukan huruf kapital di cerita.
 - KALAU argumen ada `modal`: tambah `"lot": N` di TIAP call BELI (hasil sizing di aturan bawah) +
   `"modal": <angka>` di top-level JSON. Tanpa modal → nggak usah field lot.
 
@@ -74,7 +81,7 @@ IHSG belum ada di DB, jadi tone makro dibaca dari berita.
   Backtest: trailing JAUH > fixed target (avg winner 20% vs 14%, max 425% vs 189%). Di `reason`
   ingetin: "biarin lari — geser stop naik (trailing high−3×ATR), jangan jual pas kena target".
 - **MAKRO (regime):** baca REGIME IHSG di brief. Risk-off = lebih SELEKTIF + ukuran lebih KECIL
-  (BUKAN stop total — backtest: risk-off masih rata2 +2,86%). Tulis regime + sikap di field `macro`.
+  (BUKAN stop total — backtest: risk-off masih rata2 +2,86%). Regime di field `regime`, sikapnya diceritain di `macro`.
 - **SIZING:** kalau argumen ada `modal`, HITUNG lot tiap call BELI — pakai
   `python -c "from trade.risk import position_size; print(position_size(MODAL, ENTRY, STOP, risk_pct=0.02)['lot'])"`
   (atau rumus: `lot = floor(modal*risk / ((entry-stop)*100))`, cap `lot*100*entry <= modal`; kalau 1 lot

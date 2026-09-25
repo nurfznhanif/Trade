@@ -87,6 +87,7 @@ export default function App() {
   const [note, setNote] = useState("");
   const [macro, setMacro] = useState<MacroItem[]>([]);
   const [conn, setConn] = useState<"cari" | "ok" | "mati">("cari");
+  const [macroOpen, setMacroOpen] = useState(false);
 
   // ambil analisa + angka makro dari backend
   const loadLive = (hit = true) => {
@@ -118,11 +119,13 @@ export default function App() {
   }, [data]);
 
   const shown = data.calls.filter((c) => group(c.action) === tab);
-  const regime = data.macro.toUpperCase().includes("RISK-OFF")
-    ? "RISK-OFF"
-    : data.macro.toUpperCase().includes("RISK-ON")
-    ? "RISK-ON"
-    : "NETRAL";
+  // regime dari field LLM; analisa lama belum punya -> tebak dari teks
+  const regime = (data.regime || "").toUpperCase() ||
+    (data.macro.toUpperCase().includes("RISK-OFF") ? "RISK-OFF"
+      : data.macro.toUpperCase().includes("RISK-ON") ? "RISK-ON" : "NETRAL");
+  const regimeCol = regime === "RISK-OFF" ? "#ef4444" : regime === "RISK-ON" ? "#22c55e" : "#f59e0b";
+  // cerita makro: paragraf pertama tampil, sisanya di "Baca selengkapnya"
+  const paras = data.macro.split(/\n+/).map((s) => s.trim()).filter(Boolean);
 
   // tombol Analisa: panggil backend jalanin auto_analisa (bisa 1-2 menit)
   return (
@@ -156,23 +159,22 @@ export default function App() {
             <View style={styles.macroCard}>
               <View style={styles.macroHead}>
                 <Text style={styles.macroLabel}>ANALISIS MAKRO</Text>
-                <View
-                  style={[
-                    styles.regimePill,
-                    { borderColor: regime === "RISK-OFF" ? "#ef4444" : "#22c55e" },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.regimeText,
-                      { color: regime === "RISK-OFF" ? "#ef4444" : "#22c55e" },
-                    ]}
-                  >
-                    {regime}
-                  </Text>
+                <View style={[styles.regimePill, { borderColor: regimeCol }]}>
+                  <Text style={[styles.regimeText, { color: regimeCol }]}>{regime}</Text>
                 </View>
               </View>
-              <Text style={styles.macroText}>{data.macro}</Text>
+              <Text style={styles.macroText}>{paras[0]}</Text>
+              {macroOpen
+                ? paras.slice(1).map((p, i) => (
+                    <Text key={i} style={[styles.macroText, styles.macroPara]}>{p}</Text>
+                  ))
+                : null}
+              {paras.length > 1 ? (
+                <Pressable onPress={() => setMacroOpen((o) => !o)} hitSlop={8} style={styles.macroMoreBtn}>
+                  <Text style={styles.macroMore}>{macroOpen ? "Tutup" : "Baca selengkapnya"}</Text>
+                  <Ionicons name={macroOpen ? "chevron-up" : "chevron-down"} size={14} color="#2dd4bf" />
+                </Pressable>
+              ) : null}
               {macro.length > 0 ? (
                 <ScrollView
                   horizontal
@@ -705,22 +707,23 @@ function StatTile({ n, label, color }: { n: number; label: string; color: string
   );
 }
 
-// angka makro: >=1000 -> ribuan pakai titik (17.531); <1000 -> 2 desimal koma (98,73)
-function fmtMacro(n: number): string {
-  if (n >= 1000) return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  return n.toFixed(2).replace(".", ",");
+// angka makro: Rupiah >= 1 juta -> "Rp2,48jt"; >=1000 -> titik ribuan (17.875); <1000 -> 2 desimal (98,73)
+function fmtMacro(m: MacroItem): string {
+  const n = m.last;
+  if (m.unit === "Rp") return n >= 1e6 ? `Rp${(n / 1e6).toFixed(2).replace(".", ",")}jt` : `Rp${fmtInt(n)}`;
+  const s = n >= 1000 ? fmtInt(n) : n.toFixed(2).replace(".", ",");
+  return m.unit === "%" ? s + "%" : m.unit === "$" ? "$" + s : s;
 }
 
 function MacroTile({ m }: { m: MacroItem }) {
   const col = m.chg > 0 ? "#22c55e" : m.chg < 0 ? "#ef4444" : "#7d8792";
   return (
     <View style={styles.macroTile}>
-      <Text style={styles.macroTileLabel}>{m.label}</Text>
-      <Text style={styles.macroTileVal}>
-        {m.unit === "$" ? "$" : ""}
-        {fmtMacro(m.last)}
-        {m.unit === "%" ? "%" : ""}
+      <Text style={styles.macroTileLabel}>
+        {m.label}
+        {m.per ? <Text style={styles.macroTilePer}> /{m.per}</Text> : null}
       </Text>
+      <Text style={styles.macroTileVal}>{fmtMacro(m)}</Text>
       <Text style={[styles.macroTileChg, { color: col }]}>
         {m.chg >= 0 ? "+" : ""}
         {m.chg}%
@@ -1666,7 +1669,11 @@ const styles = StyleSheet.create({
   macroCard: { backgroundColor: "#121821", borderRadius: 14, padding: 14, marginTop: 14, borderWidth: 1, borderColor: "#1e2731" },
   macroHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 },
   macroLabel: { color: "#2dd4bf", fontSize: 11, fontWeight: "800", letterSpacing: 1 },
-  macroText: { color: "#c2cbd4", fontSize: 13, lineHeight: 19 },
+  macroText: { color: "#c2cbd4", fontSize: 14, lineHeight: 21 },
+  macroPara: { marginTop: 10 },
+  macroMoreBtn: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", marginTop: 8 },
+  macroMore: { color: "#2dd4bf", fontSize: 13, fontWeight: "700" },
+  macroTilePer: { color: "#56606c", fontWeight: "600" },
   macroStrip: { marginTop: 12, marginHorizontal: -2 },
   macroStripInner: { gap: 8, paddingHorizontal: 2 },
   macroTile: { backgroundColor: "#0e141b", borderRadius: 10, borderWidth: 1, borderColor: "#1e2731", paddingHorizontal: 11, paddingVertical: 8, minWidth: 82 },

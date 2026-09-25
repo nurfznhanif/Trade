@@ -25,6 +25,7 @@ export interface Position {
 export interface Analysis {
   generated: string;
   generated_at?: string; // jam analisa (ISO, UTC)
+  regime?: "RISK-ON" | "RISK-OFF" | "NETRAL" | string;
   engine: string;
   modal?: number;
   macro: string;

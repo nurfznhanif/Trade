@@ -200,7 +200,8 @@ export const getPrices = (ticker: string, days = 90): Promise<Prices> =>
 export interface MacroItem {
   ticker: string;
   label: string;
-  unit: string; // "$" prefix, "%" suffix, atau ""
+  unit: string; // "Rp" prefix, "%" suffix, atau "" (indeks)
+  per?: string | null; // satuan: "gr" (emas), "barel" (minyak)
   last: number;
   chg: number;
   date: string;

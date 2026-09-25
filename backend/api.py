@@ -166,7 +166,8 @@ def slicing(q: SlicingIn):
     if q.modal < 100_000:
         raise HTTPException(400, "Modal minimal Rp100.000.")
     a = get_analysis()
-    risk_off = "RISK-OFF" in (a.get("macro") or "").upper()
+    risk_off = (a.get("regime") or "").upper() == "RISK-OFF" or (
+        not a.get("regime") and "RISK-OFF" in (a.get("macro") or "").upper())   # analisa lama: tebak dari teks
     out = allocate(q.modal, a.get("calls", []), risk_pct=0.01 if risk_off else 0.02)
     out["risk_off"] = risk_off
     out["generated_at"] = a.get("generated_at")
@@ -260,36 +261,46 @@ def get_prices(ticker: str, days: int = 90):
 
 
 # label + unit buat tiap ticker makro (urutan = urutan tampil di app)
+# label, unit, per (satuan), faktor ke rupiah. Komoditas dolar dikonversi pakai kurs USD/IDR hari itu:
+# emas $/troy ounce -> Rp/gram (1 oz = 31,1035 gr), minyak $/barel -> Rp/barel. Indeks & yield tetap.
+TROY_OZ_GR = 31.1035
 MACRO_LABELS = {
-    "GC=F": ("Emas", "$"),
-    "IDR=X": ("USD/IDR", ""),
-    "^JKSE": ("IHSG", ""),
-    "CL=F": ("Minyak", "$"),
-    "DX-Y.NYB": ("DXY", ""),
-    "^TNX": ("US 10Y", "%"),
-    "^VIX": ("VIX", ""),
+    "GC=F": ("Emas", "Rp", "gr", 1 / TROY_OZ_GR),
+    "IDR=X": ("USD/IDR", "Rp", None, None),
+    "^JKSE": ("IHSG", "", None, None),
+    "CL=F": ("Minyak", "Rp", "barel", 1.0),
+    "DX-Y.NYB": ("DXY", "", None, None),
+    "^TNX": ("US 10Y", "%", None, None),
+    "^VIX": ("VIX", "", None, None),
 }
 
 
 @app.get("/macro")
 def get_macro():
-    """Angka makro/komoditas harian + perubahan (buat strip di card Makro)."""
+    """Angka makro/komoditas harian + perubahan (buat strip di card Makro). Emas & minyak dalam RUPIAH."""
     conn = db()
     try:
-        out = []
-        for tk, (label, unit) in MACRO_LABELS.items():
-            rows = conn.execute(
-                "SELECT date,close FROM macro WHERE ticker=? ORDER BY date DESC LIMIT 2", (tk,)
-            ).fetchall()
-            if not rows:
-                continue
-            last = rows[0]["close"]
-            prev = rows[1]["close"] if len(rows) > 1 else last
-            chg = round((last / prev - 1) * 100, 2) if prev else 0.0
-            out.append({"ticker": tk, "label": label, "unit": unit,
-                        "last": last, "chg": chg, "date": rows[0]["date"]})
+        last2 = {tk: conn.execute("SELECT date,close FROM macro WHERE ticker=? ORDER BY date DESC LIMIT 2",
+                                  (tk,)).fetchall() for tk in MACRO_LABELS}
     finally:
         conn.close()
+    fx = last2.get("IDR=X") or []
+    fx_last = fx[0]["close"] if fx else None
+    fx_prev = fx[1]["close"] if len(fx) > 1 else fx_last
+    out = []
+    for tk, (label, unit, per, to_rp) in MACRO_LABELS.items():
+        rows = last2[tk]
+        if not rows:
+            continue
+        last = rows[0]["close"]
+        prev = rows[1]["close"] if len(rows) > 1 else last
+        if to_rp is not None:          # harga dolar -> rupiah (ikut gerak kurs juga)
+            if not fx_last:
+                continue
+            last, prev = last * fx_last * to_rp, prev * (fx_prev or fx_last) * to_rp
+        chg = round((last / prev - 1) * 100, 2) if prev else 0.0
+        out.append({"ticker": tk, "label": label, "unit": unit, "per": per,
+                    "last": last, "chg": chg, "date": rows[0]["date"]})
     return {"items": out}
 
 
