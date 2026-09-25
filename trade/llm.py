@@ -148,6 +148,42 @@ def list_models(env: dict) -> list[str]:
         return []
 
 
+def check_key(env: dict) -> bool | None:
+    """Cek API key GRATIS (cuma nanya daftar model, gak nyuruh LLM nulis -> 0 token).
+    True = valid, False = ditolak/kosong, None = gak ketahuan (jaringan/server provider)."""
+    c = resolve(env)
+    if not c["key"] and c["provider"] != "ollama":
+        return False
+    try:
+        auth = {"Authorization": f"Bearer {c['key'] or 'ollama'}"}
+        if c["provider"] == "openrouter":   # /models OpenRouter gak butuh key -> pakai /auth/key
+            r = requests.get("https://openrouter.ai/api/v1/auth/key", headers=auth, timeout=15)
+        elif c["openai"]:
+            r = requests.get(f"{c['base'].rstrip('/')}/models", headers=auth, timeout=15)
+        else:
+            r = requests.get(f"{c['base']}/models?key={c['key']}&pageSize=1", timeout=15)
+    except Exception:
+        return None
+    if r.status_code == 200:
+        return True
+    return False if r.status_code in (400, 401, 403) else None
+
+
+def balance_usd(env: dict) -> float | None:
+    """Sisa saldo (USD) — cuma DeepSeek yang nyediain endpoint gratisnya. Lainnya None."""
+    c = resolve(env)
+    if c["provider"] != "deepseek" or not c["key"]:
+        return None
+    try:
+        r = requests.get("https://api.deepseek.com/user/balance",
+                         headers={"Authorization": f"Bearer {c['key']}"}, timeout=15)
+        infos = r.json().get("balance_infos") or []
+        usd = [b for b in infos if b.get("currency") == "USD"] or infos
+        return float(usd[0]["total_balance"]) if usd else None
+    except Exception:
+        return None
+
+
 def test_connection(env: dict) -> tuple[bool, str]:
     """Ping kecil: balikin (ok, pesan) buat tombol 'Tes' di menu."""
     c = resolve(env)

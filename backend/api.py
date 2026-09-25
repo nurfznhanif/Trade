@@ -508,6 +508,26 @@ def _env_for(provider: str, model: str | None, api_key: str | None, base_url: st
     return env
 
 
+@app.get("/config/llm/status")
+def llm_status():
+    """Status otak analisa yang lagi dipakai — GRATIS (cuma cek key ke provider, gak manggil LLM, 0 token).
+    DeepSeek: + sisa saldo (USD & kira-kira Rupiah pakai kurs terakhir)."""
+    env = read_env()
+    c = llm.resolve(env)
+    ok = llm.check_key(env)
+    bal = llm.balance_usd(env) if ok else None
+    rp = None
+    if bal is not None:
+        conn = db()
+        try:
+            fx = conn.execute("SELECT close FROM macro WHERE ticker='IDR=X' ORDER BY date DESC LIMIT 1").fetchone()
+        finally:
+            conn.close()
+        rp = round(bal * fx["close"]) if fx else None
+    return {"ok": ok, "provider": c["provider"], "label": c["label"], "model": c["model"],
+            "balance_usd": bal, "balance_rp": rp}
+
+
 @app.post("/config/llm/test")
 def test_llm(cfg: LLMConfig | None = None):
     """Tes provider/model yang lagi DIPILIH di app (belum perlu disimpan). Tanpa body = tes yang tersimpan."""

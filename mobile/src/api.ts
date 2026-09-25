@@ -115,6 +115,17 @@ export interface LlmInfo {
 }
 export const getLlmConfig = (): Promise<LlmInfo> => req("/config/llm");
 
+// status otak analisa aktif — GRATIS (cek key doang, gak manggil LLM). DeepSeek + sisa saldo.
+export interface LlmStatus {
+  ok: boolean | null; // null = gak ketahuan (jaringan)
+  provider: string;
+  label: string;
+  model: string;
+  balance_usd: number | null;
+  balance_rp: number | null;
+}
+export const getLlmStatus = (): Promise<LlmStatus> => req("/config/llm/status");
+
 export const deleteLlmKey = (provider: string) =>
   req(`/config/llm/key/${encodeURIComponent(provider)}`, { method: "DELETE" });
 

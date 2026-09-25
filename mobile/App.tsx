@@ -38,6 +38,7 @@ import {
   getAnalysis,
   getJournal,
   getLlmModels,
+  getLlmStatus,
   getLlmConfig,
   getMacro,
   getNews,
@@ -1283,7 +1284,9 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
   // hasil tombol Cek terakhir; berlaku cuma buat kombinasi provider|model|key yang dicek
   const [check, setCheck] = useState<{ sig: string; ok: boolean; text: string } | null>(null);
   const [checking, setChecking] = useState(false);
-  const [llmStatus, setLlmStatus] = useState<{ state: "cek" | "ok" | "gagal"; text?: string }>({ state: "cek" });
+  const [llmStatus, setLlmStatus] = useState<{
+    state: "cek" | "ok" | "gagal" | "tau"; text?: string; saldo?: number | null; tipis?: boolean;
+  }>({ state: "cek" });
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ text: string; ok?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1302,11 +1305,20 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
       .catch(() => {});
 
   // cek otak analisa yang lagi dipakai beneran nyambung (1 pesan kecil ke LLM)
+  // status otak aktif: GRATIS (server cuma cek key ke provider, gak nyuruh LLM nulis -> 0 token)
   const checkActive = () => {
     setLlmStatus({ state: "cek" });
-    testLlm()
-      .then((r) => setLlmStatus({ state: r.ok ? "ok" : "gagal", text: r.message.replace(/^GAGAL\s*\S\s*/, "") }))
-      .catch((e) => setLlmStatus({ state: "gagal", text: String(e?.message || e) }));
+    getLlmStatus()
+      .then((s) =>
+        setLlmStatus(
+          s.ok === true
+            ? { state: "ok", saldo: s.balance_rp, tipis: s.balance_usd != null && s.balance_usd < 0.2 }
+            : s.ok === false
+            ? { state: "gagal", text: "API key ditolak — ketuk Ubah buat ganti" }
+            : { state: "tau" },
+        ),
+      )
+      .catch(() => setLlmStatus({ state: "tau" }));   // jaringan / server lama: jangan dibilang gagal
   };
 
   const loadConfig = (cek = true) =>
@@ -1398,11 +1410,10 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
     setBusy(true); setMsg(null);
     try {
       await setLlmConfig(cfg());
-      setLlmStatus({ state: "ok" });
       setKey("");
       setEditing(false);
       setCheck(null);
-      await loadConfig(false);
+      await loadConfig(true);   // status + saldo (gratis)
     } catch (e: any) {
       setMsg({ text: "Gagal simpan: " + String(e?.message || e), ok: false });
     } finally {
@@ -1423,8 +1434,17 @@ function SettingsScreen({ connected, onConnected }: { connected: boolean | null;
   let rowDot = AMBER;
   let rowText = key.trim() ? `Klik Cek buat nyambungin ${label}` : `API key ${label} belum diisi`;
   if (active && !editing) {
-    if (llmStatus.state === "ok") { rowDot = GREEN; rowText = `Tersambung — ${label} / ${model}`; }
-    else if (llmStatus.state === "gagal") { rowDot = RED; rowText = `Gagal nyambung — ${llmStatus.text || ""}`; }
+    if (llmStatus.state === "ok") {
+      rowDot = llmStatus.tipis ? AMBER : GREEN;
+      rowText = `Tersambung — ${label} / ${model}`;
+      if (llmStatus.saldo != null) {
+        rowText += llmStatus.tipis
+          ? ` · saldo tinggal ±Rp${fmtInt(llmStatus.saldo)}, top up`
+          : ` · saldo ±Rp${fmtInt(llmStatus.saldo)}`;
+      }
+    }
+    else if (llmStatus.state === "gagal") { rowDot = RED; rowText = llmStatus.text || "API key ditolak"; }
+    else if (llmStatus.state === "tau") { rowDot = GREEN; rowText = `API key ${label} tersimpan`; }
     else { rowDot = GREY; rowText = `Ngecek koneksi ${label}…`; }
   } else if (checking) {
     rowDot = GREY; rowText = `Ngecek ${label} / ${model}…`;
