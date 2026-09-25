@@ -55,6 +55,7 @@ import {
   saveApiBase,
   saveApiToken,
   saveModal,
+  SlicePick,
   Slicing,
   setLlmConfig,
   testLlm,
@@ -559,7 +560,10 @@ function SliceResult({ r }: { r: Slicing }) {
   const [rules, setRules] = useState(false);
   const usedPct = r.modal ? r.used / r.modal : 0;
   const more = r.skipped.length - 3;
-  const adaUntung = typeof r.reward_rp === "number";   // server lama belum ngirim -> jangan tampil NaN
+  // untung kalau sampai target: pakai hitungan server, kalau belum ada hitung sendiri (lot x 100 x (target - entry))
+  const untung = (p: SlicePick) =>
+    typeof p.reward_rp === "number" ? p.reward_rp : p.target && p.target > p.entry ? p.lot * 100 * (p.target - p.entry) : 0;
+  const untungTotal = r.picks.reduce((a, p) => a + untung(p), 0);
   const rp = (x: number) => `Rp${fmtRpShort(x)}`;
   const rk = r.rules;
   return (
@@ -574,9 +578,7 @@ function SliceResult({ r }: { r: Slicing }) {
       <View style={styles.sliceStats}>
         <SliceStat label="Terpakai" val={rp(r.used)} sub={pctTxt(usedPct)} />
         <SliceStat label="Kas (gak dibelikan)" val={rp(r.cash)} sub={pctTxt(1 - usedPct)} />
-        {adaUntung ? (
-          <SliceStat label="Untung kalau sampai Target" val={`+${rp(r.reward_rp)}`} sub={`+${pctTxt(r.reward_pct)} dari modal`} color="#22c55e" />
-        ) : null}
+        <SliceStat label="Untung kalau sampai Target" val={`+${rp(untungTotal)}`} sub={`+${pctTxt(r.modal ? untungTotal / r.modal : 0)} dari modal`} color="#22c55e" />
         <SliceStat label="Rugi kalau kena Stop" val={`−${rp(r.risk_rp)}`} sub={`−${pctTxt(r.risk_pct)} dari modal`} color="#ef4444" />
       </View>
 
@@ -598,16 +600,16 @@ function SliceResult({ r }: { r: Slicing }) {
               {p.ticker.replace(".JK", "")} <Text style={styles.sliceLot}>{p.lot} lot @ {fmtInt(p.entry)}</Text>
             </Text>
             <View style={styles.slicePills}>
-              {adaUntung && p.reward_rp > 0 && p.target != null ? (
+              {p.target != null && untung(p) > 0 ? (
                 <View style={[styles.slicePill, styles.slicePillUp]}>
                   <Text style={[styles.slicePillText, { color: "#22c55e" }]}>
-                    Target {fmtInt(p.target)} · untung +{rp(p.reward_rp)}
+                    Target {fmtInt(p.target)} · Untung +{rp(untung(p))}
                   </Text>
                 </View>
               ) : null}
               <View style={[styles.slicePill, styles.slicePillDown]}>
                 <Text style={[styles.slicePillText, { color: "#ef4444" }]}>
-                  Stop {fmtInt(p.stop)} · rugi −{rp(p.risk_rp)}
+                  Stop {fmtInt(p.stop)} · Rugi −{rp(p.risk_rp)}
                 </Text>
               </View>
             </View>
@@ -649,7 +651,10 @@ function SliceResult({ r }: { r: Slicing }) {
               <Text style={styles.ruleItemText}>{t}</Text>
             </View>
           ))}
-          <Text style={styles.sliceFoot}>Ini hitungan otomatis, bukan saran beli — keputusan tetap di tangan sendiri.</Text>
+          <Text style={styles.sliceFoot}>
+            Ini hitungan otomatis, bukan saran beli.{" "}
+            <Text style={styles.sliceFootStrong}>KEPUTUSAN TETAP DI TANGAN SENDIRI.</Text>
+          </Text>
         </View>
       ) : null}
     </View>
@@ -1726,6 +1731,7 @@ const styles = StyleSheet.create({
   sliceVal: { color: "#e6edf3", fontSize: 14, fontWeight: "800" },
   sliceNote: { color: "#8b95a1", fontSize: 12, lineHeight: 17, marginTop: 10 },
   sliceFoot: { color: "#56606c", fontSize: 11, lineHeight: 16, marginTop: 8 },
+  sliceFootStrong: { color: "#8b95a1", fontWeight: "800", letterSpacing: 0.3 },
   sliceStats: { flexDirection: "row", flexWrap: "wrap", marginTop: 12, rowGap: 12 },
   sliceStat: { width: "50%" },
   sliceStatVal: { color: "#e6edf3", fontSize: 16, fontWeight: "800", marginTop: 2 },
