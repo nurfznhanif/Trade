@@ -577,9 +577,9 @@ function SliceResult({ r }: { r: Slicing }) {
 
       <View style={styles.sliceStats}>
         <SliceStat label="Terpakai" val={rp(r.used)} sub={pctTxt(usedPct)} />
-        <SliceStat label="Kas (gak dibelikan)" val={rp(r.cash)} sub={pctTxt(1 - usedPct)} />
-        <SliceStat label="Untung kalau sampai Target" val={`+${rp(untungTotal)}`} sub={`+${pctTxt(r.modal ? untungTotal / r.modal : 0)} dari modal`} color="#22c55e" />
-        <SliceStat label="Rugi kalau kena Stop" val={`−${rp(r.risk_rp)}`} sub={`−${pctTxt(r.risk_pct)} dari modal`} color="#ef4444" />
+        <SliceStat label="Tidak Terpakai" val={rp(r.cash)} sub={pctTxt(1 - usedPct)} />
+        <SliceStat label="Untung" val={`+${rp(untungTotal)}`} sub={`+${pctTxt(r.modal ? untungTotal / r.modal : 0)} dari modal`} color="#22c55e" />
+        <SliceStat label="Rugi" val={`−${rp(r.risk_rp)}`} sub={`−${pctTxt(r.risk_pct)} dari modal`} color="#ef4444" />
       </View>
 
       {r.risk_off ? (
