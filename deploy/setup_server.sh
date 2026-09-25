@@ -4,8 +4,10 @@
 #   - jalan sebagai user sendiri `trade` (bukan root), folder /opt/trade, port DALAM 127.0.0.1:8000
 #   - cuma NAMBAH 1 site nginx (site lain gak disentuh; dicek `nginx -t` dulu sebelum reload)
 #   - zona waktu WIB cuma buat service Trade (zona waktu server gak diubah)
-#   - firewall (ufw) gak diubah
+#   - firewall (ufw) gak diubah; service lain gak di-restart (needrestart dimatiin)
+#   - Trade DIBATASI (CPU/RAM/prioritas) biar gak nyedot jatah aplikasi lain
 #   - auto-update: tiap 15 menit narik kode terbaru dari GitHub (gak butuh SSH)
+#   - mau batal: deploy/uninstall_server.sh
 #
 # Jalanin SEKALI sebagai root (Alibaba: tab Command Assistant, Timeout 1800 detik):
 #   curl -fsSL https://raw.githubusercontent.com/nurfznhanif/Trade/main/deploy/setup_server.sh | bash -s -- "<kunci publik SSH PC>"
@@ -27,6 +29,8 @@ if ss -tln | awk '{print $4}' | grep -qE "[:.]$PORT\$" && ! systemctl is-active 
 fi
 
 echo "==> [1/7] Paket sistem"
+# Ubuntu 22.04: needrestart bisa auto-restart service LAIN (php-fpm/mysql) habis apt -> matiin
+export NEEDRESTART_MODE=l NEEDRESTART_SUSPEND=1
 apt-get update -y -q
 DEBIAN_FRONTEND=noninteractive apt-get install -y -q python3-venv python3-pip git sqlite3
 command -v certbot >/dev/null || DEBIAN_FRONTEND=noninteractive apt-get install -y -q certbot python3-certbot-nginx
@@ -50,8 +54,8 @@ install -d -o "$U" -g "$U" "$APP"
 if [ -d "$APP/.git" ]; then as_trade git -C "$APP" pull -q --ff-only; else as_trade git clone -q "$REPO" "$APP"; fi
 as_trade mkdir -p "$APP/data"
 [ -d "$APP/.venv" ] || as_trade python3 -m venv "$APP/.venv"
-as_trade "$APP/.venv/bin/pip" install -q --upgrade pip
-as_trade "$APP/.venv/bin/pip" install -q -r "$APP/requirements.txt"
+as_trade nice -n 15 "$APP/.venv/bin/pip" install -q --upgrade pip
+as_trade nice -n 15 "$APP/.venv/bin/pip" install -q -r "$APP/requirements.txt"
 
 echo "==> [4/7] Kunci akses"
 as_trade touch "$APP/.env" && chmod 600 "$APP/.env"
@@ -71,6 +75,10 @@ Environment=TZ=Asia/Jakarta
 ExecStart=$APP/.venv/bin/uvicorn backend.api:app --host 127.0.0.1 --port $PORT
 Restart=always
 RestartSec=3
+# jatah dibatasi: maks 1 core & 1 GB RAM, prioritas di bawah aplikasi lain
+Nice=5
+CPUQuota=100%
+MemoryMax=1G
 
 [Install]
 WantedBy=multi-user.target
@@ -84,6 +92,10 @@ Type=oneshot
 User=$U
 WorkingDirectory=$APP
 Environment=TZ=Asia/Jakarta
+Nice=15
+CPUQuota=60%
+MemoryMax=1500M
+IOSchedulingClass=idle
 ExecStart=$APP/.venv/bin/python scripts/daily.py
 ExecStart=$APP/.venv/bin/python scripts/auto_analisa.py --out $APP/data/analysis.json
 EOF
@@ -106,6 +118,8 @@ Description=Trade IDX tarik kode terbaru dari GitHub
 Type=oneshot
 User=$U
 WorkingDirectory=$APP
+Nice=15
+CPUQuota=60%
 ExecStart=/bin/bash $APP/deploy/auto_update.sh
 EOF
 cat > /etc/systemd/system/trade-update.timer <<EOF
@@ -128,8 +142,7 @@ SITE=/etc/nginx/sites-available/trade
 if [ ! -f "$SITE" ]; then
   cat > "$SITE" <<EOF
 server {
-    listen 80;
-    listen [::]:80;
+    listen 80;   # IPv4 aja (sama kayak site lain; IPv6 gak dibuka)
     server_name $DOMAIN;
     location / {
         proxy_pass http://127.0.0.1:$PORT;
