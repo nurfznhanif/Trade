@@ -576,8 +576,8 @@ function SliceResult({ r }: { r: Slicing }) {
       </View>
 
       <View style={styles.sliceStats}>
-        <SliceStat label="Terpakai" val={rp(r.used)} sub={pctTxt(usedPct)} />
-        <SliceStat label="Tidak Terpakai" val={rp(r.cash)} sub={pctTxt(1 - usedPct)} />
+        <SliceStat label="Terpakai" val={rp(r.used)} sub={`${pctTxt(usedPct)} dari modal`} />
+        <SliceStat label="Tidak Terpakai" val={rp(r.cash)} sub={`${pctTxt(1 - usedPct)} dari modal`} />
         <SliceStat label="Untung" val={`+${rp(untungTotal)}`} sub={`+${pctTxt(r.modal ? untungTotal / r.modal : 0)} dari modal`} color="#22c55e" />
         <SliceStat label="Rugi" val={`−${rp(r.risk_rp)}`} sub={`−${pctTxt(r.risk_pct)} dari modal`} color="#ef4444" />
       </View>
@@ -1733,8 +1733,8 @@ const styles = StyleSheet.create({
   sliceFootCenter: { color: "#8b95a1", fontSize: 11, fontWeight: "800", letterSpacing: 0.5, textAlign: "center", marginTop: 4 },
   sliceHeadRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 },
   slicePillBuy: { borderColor: "rgba(56,189,248,0.35)", backgroundColor: "rgba(56,189,248,0.08)" },
-  sliceStats: { flexDirection: "row", flexWrap: "wrap", marginTop: 12, rowGap: 12 },
-  sliceStat: { width: "50%" },
+  sliceStats: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 8, marginTop: 12 },
+  sliceStat: { width: "48.5%", alignItems: "center", paddingVertical: 10, borderRadius: 10, backgroundColor: "#0e141b", borderWidth: 1, borderColor: "#1e2731" },
   sliceStatVal: { color: "#e6edf3", fontSize: 16, fontWeight: "800", marginTop: 2 },
   sliceCallout: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginTop: 14, padding: 10, borderRadius: 10, backgroundColor: "rgba(245,158,11,0.08)", borderWidth: 1, borderColor: "rgba(245,158,11,0.30)" },
   sliceCalloutText: { flex: 1, color: "#c2cbd4", fontSize: 12, lineHeight: 17, textAlign: "justify" },
