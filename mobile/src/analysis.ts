@@ -24,6 +24,7 @@ export interface Position {
 
 export interface Analysis {
   generated: string;
+  generated_at?: string; // jam analisa (ISO, UTC)
   engine: string;
   modal?: number;
   macro: string;
@@ -74,6 +75,25 @@ export function group(action: string): "beli" | "tunggu" | "hindari" {
   if (action.startsWith("BELI")) return "beli";
   if (action.startsWith("HINDARI")) return "hindari";
   return "tunggu";
+}
+
+const HARI = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+const BULAN = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus",
+  "September", "Oktober", "November", "Desember"];
+
+// "2026-09-25T10:35:00+00:00" -> "Jumat, 25 September 2026 pukul 17.35 WIB"
+// (tanpa jam -> tanggal aja). Digeser manual ke WIB biar gak tergantung zona waktu HP.
+export function fmtWaktu(iso?: string, tanggal?: string): string {
+  const t = iso ? Date.parse(iso) : NaN;
+  if (!isNaN(t)) {
+    const d = new Date(t + 7 * 3600e3);
+    const hh = String(d.getUTCHours()).padStart(2, "0");
+    const mm = String(d.getUTCMinutes()).padStart(2, "0");
+    return `${HARI[d.getUTCDay()]}, ${d.getUTCDate()} ${BULAN[d.getUTCMonth()]} ${d.getUTCFullYear()} pukul ${hh}.${mm} WIB`;
+  }
+  const d = tanggal ? new Date(tanggal.slice(0, 10) + "T00:00:00Z") : null;
+  if (d && !isNaN(+d)) return `${HARI[d.getUTCDay()]}, ${d.getUTCDate()} ${BULAN[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+  return tanggal || "";
 }
 
 // format angka ala Indonesia: 1310 -> "1.310"

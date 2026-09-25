@@ -18,7 +18,7 @@ import secrets
 import sqlite3
 import subprocess
 import sys
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -106,7 +106,10 @@ def get_analysis():
     """Hasil analisa terbaru (data/analysis.json)."""
     if not ANALYSIS.exists():
         raise HTTPException(404, "Belum ada analisa. POST /analisa dulu.")
-    return json.loads(ANALYSIS.read_text(encoding="utf-8"))
+    a = json.loads(ANALYSIS.read_text(encoding="utf-8"))
+    if not a.get("generated_at"):   # analisa lama (/analisa manual) belum nyatet jam -> pakai waktu file
+        a["generated_at"] = datetime.fromtimestamp(ANALYSIS.stat().st_mtime, timezone.utc).isoformat(timespec="seconds")
+    return a
 
 
 def _friendly_error(output: str) -> tuple[int, str]:
@@ -137,7 +140,7 @@ def run_analisa(modal: str | None = None):
     if p.returncode != 0:
         code, msg = _friendly_error(p.stderr or p.stdout)
         raise HTTPException(code, msg)
-    return json.loads(ANALYSIS.read_text(encoding="utf-8"))
+    return get_analysis()
 
 
 # ---------------------------------------------------------------- data tab (Sinyal/Berita/Chart)
@@ -480,13 +483,13 @@ class ModelsQuery(BaseModel):
 
 @app.post("/config/llm/models")
 def llm_models(q: ModelsQuery):
-    """Daftar model ASLI dari provider (pakai key) — biar dropdown gak basi pas model lama dipensiunkan.
-    Tanpa key / gagal / katalog kegedean (>25, mis. OpenRouter) -> daftar bawaan."""
+    """Daftar model chat ASLI dari provider (pakai key, udah disaring llm.chat_models) — biar dropdown
+    gak basi pas model lama dipensiunkan. Tanpa key / gagal / kegedean (>40, mis. OpenRouter) -> bawaan."""
     p = llm.PROVIDERS.get(q.provider)
     if not p:
         raise HTTPException(400, "Provider gak dikenal.")
     env = _env_for(q.provider, None, q.api_key, q.base_url)
     live = llm.list_models(env) if (llm.resolve(env)["key"] or q.provider == "ollama") else []
-    if 0 < len(live) <= 25:
+    if 0 < len(live) <= 40:
         return {"models": live, "live": True}
     return {"models": p["models"], "live": False}

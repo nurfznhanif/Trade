@@ -18,6 +18,7 @@ import {
   Call,
   fmtInt,
   flagColor,
+  fmtWaktu,
   group,
   pct,
   Position,
@@ -150,7 +151,7 @@ export default function App() {
           </Pressable>
         </View>
         <Text style={styles.sub}>
-          data {data.generated}
+          {fmtWaktu(data.generated_at, data.generated)}
         </Text>
         {conn === "cari" ? <Text style={styles.sub}>Nyari server di PC…</Text> : null}
         {conn === "mati" ? <OfflineCard onRetry={connect} /> : null}

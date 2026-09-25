@@ -12,6 +12,7 @@ Config dibaca dari env (diisi lewat .env / menu dashboard):
 """
 from __future__ import annotations
 
+import re
 import time
 
 import requests
@@ -21,16 +22,22 @@ PROVIDERS: dict[str, dict] = {
     "gemini": {"label": "Google Gemini", "openai": False,
                "base": "https://generativelanguage.googleapis.com/v1beta",
                "key_url": "aistudio.google.com/apikey",
-               "models": ["gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-3.6-flash"]},
+               # per Sep 2026 (ai.google.dev/gemini-api/docs/models): Google nyaranin 3.8 Flash / 3.5 Flash-Lite
+               "models": ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.5-flash",
+                          "gemini-flash-latest"]},
     "deepseek": {"label": "DeepSeek", "openai": True, "base": "https://api.deepseek.com",
                  # deepseek-chat/-reasoner DIPENSIUNKAN 24 Jul 2026 (api-docs.deepseek.com)
                  "key_url": "platform.deepseek.com", "models": ["deepseek-flash", "deepseek-v4-pro"]},
     "openai": {"label": "OpenAI", "openai": True, "base": "https://api.openai.com/v1",
-               "key_url": "platform.openai.com/api-keys", "models": ["gpt-4o-mini", "gpt-4o"]},
+               # per Sep 2026 (developers.openai.com/api/docs/pricing) — yang murah dulu
+               "key_url": "platform.openai.com/api-keys",
+               "models": ["gpt-6-luna", "gpt-5.6-luna", "gpt-5-mini", "gpt-6-sol", "gpt-5.6-terra"]},
     "groq": {"label": "Groq", "openai": True, "base": "https://api.groq.com/openai/v1",
-             "key_url": "console.groq.com/keys", "models": ["llama-3.3-70b-versatile", "openai/gpt-oss-120b"]},
+             "key_url": "console.groq.com/keys",
+             "models": ["openai/gpt-oss-120b", "llama-3.3-70b-versatile", "openai/gpt-oss-20b", "llama-3.1-8b-instant"]},
+    # katalog OpenRouter ratusan & cepet berubah -> bawaan cuma router otomatisnya
     "openrouter": {"label": "OpenRouter", "openai": True, "base": "https://openrouter.ai/api/v1",
-                   "key_url": "openrouter.ai/keys", "models": ["deepseek/deepseek-chat", "google/gemini-2.0-flash-exp:free"]},
+                   "key_url": "openrouter.ai/keys", "models": ["openrouter/auto"]},
     "ollama": {"label": "Ollama (lokal, gratis)", "openai": True, "base": "http://localhost:11434/v1",
                "key_url": "-", "models": ["llama3.1", "qwen2.5"]},
     "custom": {"label": "Custom (OpenAI-compatible)", "openai": True, "base": "",
@@ -107,16 +114,36 @@ def _gen_openai(prompt, c, temperature, max_tokens) -> str:
 
 
 # ------------------------------------------------------------------ utilitas menu
+# model non-chat (suara/gambar/embedding/dll) gak relevan buat analisa -> dibuang dari daftar
+_NON_CHAT = ("embed", "tts", "whisper", "audio", "realtime", "transcribe", "image", "moderation", "guard",
+             "search", "aqa", "imagen", "veo", "live", "robotics", "computer-use", "dall-e", "davinci",
+             "babbage", "sora", "vision")
+_SNAPSHOT = re.compile(r"(\d{4}-\d{2}-\d{2}|\d{2}-\d{4}|\d{2}-\d{2})$|-\d{3}$")   # varian bertanggal / -001
+
+
+def chat_models(provider: str, names: list[str]) -> list[str]:
+    """Saring daftar mentah provider -> model chat aja, versi bertanggal dibuang.
+    Urutan: model rekomendasi (daftar bawaan) dulu, sisanya terbaru dulu."""
+    out = {n for n in names if not any(s in n.lower() for s in _NON_CHAT) and not _SNAPSHOT.search(n)}
+    if provider == "openai":
+        out = {n for n in out if n.startswith(("gpt-", "o1", "o3", "o4"))}
+    elif provider == "gemini":
+        out = {n for n in out if n.startswith("gemini-")}
+    head = [m for m in PROVIDERS.get(provider, {}).get("models", []) if m in out]
+    natural = lambda s: [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", s)]
+    return head + sorted(out - set(head), key=natural, reverse=True)
+
+
 def list_models(env: dict) -> list[str]:
     c = resolve(env)
     try:
         if c["openai"]:
             r = requests.get(f"{c['base'].rstrip('/')}/models",
                              headers={"Authorization": f"Bearer {c['key'] or 'ollama'}"}, timeout=30)
-            return sorted(m["id"] for m in r.json().get("data", []))
-        r = requests.get(f"{c['base']}/models?key={c['key']}", timeout=30)
-        return sorted(m["name"].replace("models/", "") for m in r.json().get("models", [])
-                      if "generateContent" in m.get("supportedGenerationMethods", []))
+            return chat_models(c["provider"], [m["id"] for m in r.json().get("data", [])])
+        r = requests.get(f"{c['base']}/models?key={c['key']}&pageSize=1000", timeout=30)
+        return chat_models(c["provider"], [m["name"].replace("models/", "") for m in r.json().get("models", [])
+                                           if "generateContent" in m.get("supportedGenerationMethods", [])])
     except Exception:
         return []
 

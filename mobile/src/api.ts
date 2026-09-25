@@ -39,8 +39,8 @@ async function ping(base: string, ms = 3000): Promise<boolean> {
 
 // Cari backend OTOMATIS (panggil pas app start): coba semua kandidat barengan, ambil yang
 // nyaut sesuai urutan prioritas, simpan. Return alamat yang ketemu, atau null kalau PC mati.
-//   1. alamat tersimpan (terakhir berhasil / diisi manual)
-//   2. server cloud (utama)
+//   1. server cloud (utama — selalu didahulukan biar gak nyasar ke backend PC yang basi)
+//   2. alamat tersimpan (terakhir berhasil / diisi manual)
 //   3. ALAMAT RUMAH dari serve.py (LAN IP PC) — cadangan kalau cloud gak nyaut
 //   4. PC ini sendiri (app versi web di laptop)
 //   5. ALAMAT LUAR dari serve.py (tunnel, buat beda WiFi)
@@ -52,7 +52,7 @@ export async function loadApiBase(): Promise<string | null> {
     if (tok) API_TOKEN = tok;
   } catch {}
   const host = typeof window !== "undefined" ? window.location?.hostname : undefined;
-  const cands = [saved, CLOUD, ENV_RUMAH, host ? `http://${host}:8000` : null, "http://127.0.0.1:8000", ENV_LUAR]
+  const cands = [CLOUD, saved, ENV_RUMAH, host ? `http://${host}:8000` : null, "http://127.0.0.1:8000", ENV_LUAR]
     .filter((c): c is string => !!c)
     .map(norm);
   const uniq = Array.from(new Set(cands));

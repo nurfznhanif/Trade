@@ -298,6 +298,7 @@ def main() -> None:
     obj = extract_json(text)
 
     obj.setdefault("generated", date.today().isoformat())
+    obj["generated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")   # jam analisa (app: "pukul HH.MM WIB")
     apply_sizing(obj, modal, args.risk)
 
     Path(args.out).write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
