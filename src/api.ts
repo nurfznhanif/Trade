@@ -223,6 +223,75 @@ export const closeTrade = (id: number, exit: number, exit_date?: string | null) 
 
 export const deleteTrade = (id: number) => req(`/journal/${id}`, { method: "DELETE" });
 
+// ---- Tab Rapor (uji coba otomatis; terpisah dari jurnal asli) ----
+export interface SimPosition {
+  ticker: string;
+  lot: number;
+  buy_date: string;
+  buy_px: number;
+  stop: number;
+  target: number | null;
+  hit_target: boolean; // sempat lewat Target (gak dijual, biarin lari)
+  last: number;
+  last_date: string;
+  trail: number; // garis jual buat hari bursa berikutnya
+  pl_rp: number; // udah dipotong biaya beli & jual
+  pl_pct: number;
+}
+export interface SimClosed {
+  ticker: string;
+  lot: number;
+  buy_date: string;
+  buy_px: number;
+  sell_date: string;
+  sell_px: number;
+  why: string;
+  hit_target: boolean;
+  pl_rp: number;
+  pl_pct: number;
+}
+export interface CallResult {
+  date: string;
+  ticker: string;
+  action: string;
+  entry: number;
+  target: number | null;
+  stop: number;
+  result: "target" | "stop" | "jalan" | "miss" | "wait";
+  ret: number | null;
+}
+export interface Rapor {
+  ready: boolean;
+  start?: string;
+  asof?: string | null;
+  n_analyses?: number;
+  modal: number;
+  sim?: {
+    modal: number;
+    cash: number;
+    value: number;
+    equity: number;
+    pl_rp: number;
+    pl_pct: number;
+    ihsg_pct: number | null;
+    open: SimPosition[];
+    closed: SimClosed[];
+    missed: { ticker: string; date: string; why: string }[];
+    curve: { date: string; equity: number }[];
+    today: { ticker: string; lot: number; entry: number; stop: number; target: number | null; value: number }[];
+    today_date: string | null;
+  };
+  calls?: {
+    beli: { n: number; target: number; stop: number; jalan: number; miss: number; wait: number };
+    hit_rate: number | null;
+    avg: { beli: number | null; tunggu: number | null; hindari: number | null; ihsg: number | null };
+    n: { beli: number; tunggu: number; hindari: number };
+    items: CallResult[];
+  };
+  rules: { portofolio: string[]; saran: string[] };
+}
+export const getRapor = (): Promise<Rapor> => req("/rapor");
+
 // ---- Tab Pengaturan (otak analisa / LLM) ----
 export interface LlmInfo {
   provider: string;

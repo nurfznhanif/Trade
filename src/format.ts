@@ -24,6 +24,9 @@ export function fmtRpShort(n: number): string {
 // 0.125 -> "12,5%"
 export const pctTxt = (x: number) => (x * 100).toFixed(1).replace(".", ",") + "%";
 
+// 0.016 -> "+1,6%", -0.031 -> "−3,1%"
+export const pctPlus = (x: number) => (x > 0 ? "+" : x < 0 ? "−" : "") + pctTxt(Math.abs(x));
+
 // +Rp1.500 / -Rp1.500
 export function rpSigned(n: number | null | undefined): string {
   if (n == null) return "–";

@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from trade.config import ANALYSIS_PATH
 from trade.db import get_connection, norm_ticker
 from trade.macro import latest as macro_latest
-from trade.risk import allocate
+from trade.risk import allocate, is_risk_off
 
 router = APIRouter()
 
@@ -61,8 +61,7 @@ def slicing(q: SlicingIn):
     if q.modal < 100_000:
         raise HTTPException(400, "Modal minimal Rp100.000.")
     a = get_analysis()
-    risk_off = (a.get("regime") or "").upper() == "RISK-OFF" or (
-        not a.get("regime") and "RISK-OFF" in (a.get("macro") or "").upper())   # analisa lama: tebak dari teks
+    risk_off = is_risk_off(a)
     out = allocate(q.modal, a.get("calls", []), risk_pct=0.01 if risk_off else 0.02)
     out["risk_off"] = risk_off
     return out

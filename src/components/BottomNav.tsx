@@ -2,11 +2,12 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { C, IconName } from "../theme";
 
-export type Nav = "analisa" | "jurnal" | "berita" | "pengaturan";
+export type Nav = "analisa" | "jurnal" | "rapor" | "berita" | "pengaturan";
 
 const ITEMS: { key: Nav; label: string; icon: IconName }[] = [
   { key: "analisa", label: "Analisa", icon: "stats-chart" },
   { key: "jurnal", label: "Jurnal", icon: "briefcase-outline" },
+  { key: "rapor", label: "Rapor", icon: "clipboard-outline" },
   { key: "berita", label: "Berita", icon: "newspaper-outline" },
   { key: "pengaturan", label: "Pengaturan", icon: "settings-outline" },
 ];

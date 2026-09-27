@@ -22,7 +22,7 @@ from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from trade import llm
+from trade import llm, rapor
 from trade.config import ANALYSIS_PATH, BRIEF_PATH, read_env
 from trade.db import get_connection
 from trade.indicators import rsi, sma
@@ -206,7 +206,8 @@ def main() -> None:
         print(llm.test_connection(os.environ)[1])
         return
 
-    context, data_date = gather_context(get_connection())
+    conn = get_connection()
+    context, data_date = gather_context(conn)
     print(f"- data per {data_date} | LLM {cfg['label']} / {cfg['model']}")
     print(f"- context ~{len(context)} char, manggil LLM...", flush=True)
     obj = extract_json(llm.generate(build_prompt(context), os.environ))
@@ -215,6 +216,11 @@ def main() -> None:
     obj["generated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")   # app: "pukul HH.MM WIB"
     obj["engine"] = f"{cfg['label']} / {cfg['model']}"
     Path(args.out).write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
+    if Path(args.out).resolve() == ANALYSIS_PATH.resolve():   # analisa utama -> arsip buat Rapor
+        try:
+            print(f"- diarsip buat Rapor: {rapor.archive(conn, obj)}")
+        except Exception as e:                               # arsip gagal gak boleh ngeganggu analisa
+            print(f"[!] arsip analisa gagal: {e}")
 
     calls = obj.get("calls", [])
     print(f"OK {len(calls)} calls -> {args.out}")

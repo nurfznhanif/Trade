@@ -116,6 +116,12 @@ CREATE TABLE IF NOT EXISTS macro (
     PRIMARY KEY (ticker, date)
 );
 
+CREATE TABLE IF NOT EXISTS analysis_archive (
+    date          TEXT PRIMARY KEY,   -- tanggal analisa (WIB); 1 analisa per hari, dipakai Rapor
+    generated_at  TEXT,
+    json          TEXT NOT NULL       -- isi analysis.json apa adanya
+);
+
 CREATE INDEX IF NOT EXISTS idx_prices_ticker_date ON prices (ticker, date);
 CREATE INDEX IF NOT EXISTS idx_news_ticker_pub    ON news   (ticker, published);
 """

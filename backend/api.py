@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from trade.config import ANALYSIS_PATH, BASE_DIR, read_env
 from trade.llm import migrate_env
 
-from .routes import analysis, journal, news, settings
+from .routes import analysis, journal, news, rapor, settings
 
 migrate_env()   # .env format lama (LLM_API_KEY dll) -> LLM_KEY_<PROVIDER>
 API_TOKEN = os.environ.get("TRADE_API_TOKEN") or read_env().get("TRADE_API_TOKEN", "")
@@ -47,7 +47,7 @@ VERSION = _git_version()
 
 app = FastAPI(title="Trade IDX API", dependencies=[Depends(require_token)])
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-for module in (analysis, news, journal, settings):
+for module in (analysis, news, journal, rapor, settings):
     app.include_router(module.router)
 
 

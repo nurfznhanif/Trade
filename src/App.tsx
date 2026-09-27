@@ -11,6 +11,7 @@ import { fmtWaktu } from "./format";
 import { AnalysisScreen } from "./screens/analysis/AnalysisScreen";
 import { JournalScreen } from "./screens/journal/JournalScreen";
 import { NewsScreen } from "./screens/NewsScreen";
+import { RaporScreen } from "./screens/RaporScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import { C } from "./theme";
 import { ui } from "./ui";
@@ -62,6 +63,7 @@ export default function App() {
 
           {nav === "analisa" && <AnalysisScreen data={data} live={live} macro={macro} tab={tab} onTab={setTab} />}
           {nav === "jurnal" && <JournalScreen data={data} />}
+          {nav === "rapor" && <RaporScreen />}
           {nav === "berita" && <NewsScreen />}
           {nav === "pengaturan" && (
             <SettingsScreen connected={conn === "cari" ? null : conn === "ok" && live} onConnected={connect} />

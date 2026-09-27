@@ -1,2 +1,2 @@
-"""Endpoint backend, satu file per tab app: analysis (Analisa), news (Berita), journal (Jurnal),
-settings (Pengaturan)."""
+"""Endpoint backend, satu file per tab app: analysis (Analisa), journal (Jurnal), rapor (Rapor),
+news (Berita), settings (Pengaturan)."""

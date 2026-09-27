@@ -4,6 +4,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { errMsg, getSlicing, loadModal, saveModal, Slicing } from "../../api";
 import { code, fmtInt, fmtRibuan, fmtRpShort, num, pctTxt } from "../../format";
 import { C } from "../../theme";
+import { RuleList } from "../../components/RuleList";
 import { ui } from "../../ui";
 
 // warna porsi tiap saham (kategori, bukan makna untung/rugi)
@@ -74,7 +75,6 @@ function SliceStat({ label, val, sub, color }: { label: string; val: string; sub
 }
 
 function SliceResult({ r }: { r: Slicing }) {
-  const [rules, setRules] = useState(false);
   const usedPct = r.modal ? r.used / r.modal : 0;
   const more = r.skipped.length - 3;
   const rk = r.rules;
@@ -147,29 +147,18 @@ function SliceResult({ r }: { r: Slicing }) {
       ) : null}
 
       {/* aturan hitungan, dijelasin pakai angka rupiah modal ini */}
-      <Pressable onPress={() => setRules((o) => !o)} hitSlop={8} style={ui.moreBtn}>
-        <Ionicons name="information-circle-outline" size={15} color={C.accent} />
-        <Text style={ui.moreText}>{rules ? "Tutup cara hitungnya" : "Cara hitungnya"}</Text>
-        <Ionicons name={rules ? "chevron-up" : "chevron-down"} size={14} color={C.accent} />
-      </Pressable>
-      {rules ? (
-        <View style={styles.ruleBox}>
-          {[
-            `Tiap saham maksimal ${Math.round(rk.max_pct * 100)}% dari modal (${rp(r.modal * rk.max_pct)}), biar gak numpuk di satu saham. Kalau 1 lot aja udah lebih mahal dari itu, sahamnya dilewati.`,
-            `Kalau harga turun sampai Stop, rugi tiap saham dijaga sekitar ${(rk.risk_pct * 100).toFixed(0)}% dari modal (${rp(r.modal * rk.risk_pct)}).` +
-              (r.risk_off ? " Normalnya 2%, dipotong setengah karena pasar lagi RISK-OFF." : ""),
-            `Maksimal ${rk.max_pos} saham. Porsi yang kurang dari ${Math.round(rk.min_pct * 100)}% modal (${rp(r.modal * rk.min_pct)}) gak diambil karena kekecilan.`,
-            "Yang dapat jatah duluan: keyakinan (konviksi) paling tinggi, lalu yang peluang untungnya paling besar dibanding ruginya.",
-            "Fee beli 0,15% udah ikut dihitung. Sisa uang yang gak kebelikan jadi kas.",
-          ].map((t, i) => (
-            <View key={i} style={styles.ruleItem}>
-              <Text style={styles.ruleNum}>{i + 1}</Text>
-              <Text style={styles.ruleText}>{t}</Text>
-            </View>
-          ))}
-          <Text style={styles.footer}>KEPUTUSAN TETAP DI TANGAN SENDIRI</Text>
-        </View>
-      ) : null}
+      <RuleList
+        label="Cara hitungnya"
+        footer="KEPUTUSAN TETAP DI TANGAN SENDIRI"
+        items={[
+          `Tiap saham maksimal ${Math.round(rk.max_pct * 100)}% dari modal (${rp(r.modal * rk.max_pct)}), biar gak numpuk di satu saham. Kalau 1 lot aja udah lebih mahal dari itu, sahamnya dilewati.`,
+          `Kalau harga turun sampai Stop, rugi tiap saham dijaga sekitar ${(rk.risk_pct * 100).toFixed(0)}% dari modal (${rp(r.modal * rk.risk_pct)}).` +
+            (r.risk_off ? " Normalnya 2%, dipotong setengah karena pasar lagi RISK-OFF." : ""),
+          `Maksimal ${rk.max_pos} saham. Porsi yang kurang dari ${Math.round(rk.min_pct * 100)}% modal (${rp(r.modal * rk.min_pct)}) gak diambil karena kekecilan.`,
+          "Yang dapat jatah duluan: keyakinan (konviksi) paling tinggi, lalu yang peluang untungnya paling besar dibanding ruginya.",
+          "Fee beli 0,15% udah ikut dihitung. Sisa uang yang gak kebelikan jadi kas.",
+        ]}
+      />
     </View>
   );
 }
@@ -203,10 +192,4 @@ const styles = StyleSheet.create({
   right: { alignItems: "flex-end" },
   val: { color: C.text, fontSize: 14, fontWeight: "800" },
   note: { color: C.label, fontSize: 12, lineHeight: 17, marginTop: 10 },
-
-  ruleBox: { marginTop: 8, padding: 12, borderRadius: 10, backgroundColor: C.sunken, borderWidth: 1, borderColor: C.border, gap: 9 },
-  ruleItem: { flexDirection: "row", gap: 9, alignItems: "flex-start" },
-  ruleNum: { width: 18, height: 18, borderRadius: 9, backgroundColor: "rgba(45,212,191,0.15)", color: C.accent, fontSize: 11, fontWeight: "800", textAlign: "center", lineHeight: 18 },
-  ruleText: { flex: 1, color: C.textSoft, fontSize: 12, lineHeight: 18, textAlign: "justify" },
-  footer: { color: C.label, fontSize: 11, fontWeight: "800", letterSpacing: 0.5, textAlign: "center", marginTop: 4 },
 });

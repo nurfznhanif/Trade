@@ -43,6 +43,12 @@ def position_size(capital: float, entry: float, stop: float,
             "note": note}
 
 
+def is_risk_off(analysis: dict) -> bool:
+    """Pasar lagi RISK-OFF menurut analisa (field regime; analisa lama belum punya -> tebak dari teks makro)."""
+    regime = (analysis.get("regime") or "").upper()
+    return regime == "RISK-OFF" or (not regime and "RISK-OFF" in (analysis.get("macro") or "").upper())
+
+
 def allocate(capital: float, calls: list[dict], risk_pct: float = 0.02, max_pct: float = 0.25,
              max_pos: int = 6, min_pct: float = 0.05, fee: float = 0.0015, lot: int = LOT) -> dict:
     """SLICING MODAL: bagi modal ke saham BELI dari analisa. Murni hitungan (BUKAN LLM).

@@ -2,7 +2,8 @@
 
 Alat bantu keputusan swing trading saham Indonesia (IDX): data harga + berita + fundamental,
 dianalisa LLM tiap pagi, dibaca lewat **app HP** (React Native / Expo). Ada jurnal trading real
-dan slicing modal (bagi modal ke saham BELI pakai aturan risiko).
+slicing modal (bagi modal ke saham BELI pakai aturan risiko), dan **Rapor** yang ngukur saran app pakai
+harga asli (portofolio uji otomatis + rapor saran BELI).
 
 > Bukan nasihat keuangan. Eksekusi order tetap di broker & keputusan di tangan sendiri.
 
@@ -14,7 +15,7 @@ Server cloud (VPS), Senin-Jumat 05:00 WIB
   scripts/auto_analisa.py  brief + ISI artikel berita -> LLM (DeepSeek/Gemini/OpenAI) -> data/analysis.json
   backend (FastAPI)        nyajiin analisa, jurnal, berita, slicing ke app (pakai kunci akses)
         |
-App HP (APK)              Analisa · Jurnal · Berita · Pengaturan
+App HP (APK)              Analisa · Jurnal · Rapor · Berita · Pengaturan
 ```
 
 ## Struktur folder
@@ -22,7 +23,7 @@ App HP (APK)              Analisa · Jurnal · Berita · Pengaturan
 ```
 src/                  App HP (TypeScript)
   App.tsx             header + menu bawah + pilih layar
-  screens/            satu folder/file per menu: analysis/, journal/, NewsScreen, SettingsScreen
+  screens/            satu folder/file per menu: analysis/, journal/, RaporScreen, NewsScreen, SettingsScreen
   components/         potongan UI yang dipakai lintas layar (menu bawah, dropdown, chart, form)
   api.ts              klien server (alamat dicari otomatis, kunci akses)
   analysis.ts         tipe analysis.json + warna aksi (BELI/TUNGGU/HINDARI)
@@ -32,8 +33,8 @@ assets/               ikon app + data contoh (tampil sebelum server ketemu)
 
 backend/              Server API (Python / FastAPI)
   api.py              pintu masuk + kunci akses (server jalanin: uvicorn backend.api:app)
-  routes/             endpoint per menu app: analysis, news, journal, settings
-trade/                Inti Python: DB, harga, berita, sentimen, sinyal, risiko, jurnal, LLM, makro
+  routes/             endpoint per menu app: analysis, journal, rapor, news, settings
+trade/                Inti Python: DB, harga, berita, sentimen, sinyal, risiko, jurnal, rapor, LLM, makro
 scripts/              Pipeline harian + alat (lihat tabel di bawah)
 deploy/               Pasang / update / copot di server Ubuntu
 
@@ -89,13 +90,23 @@ salinan `trade.db` (semua script & backend ikut pakai folder itu).
 | `generate_signals.py` | langkah 5 | sinyal BUY/HOLD/SELL + pagar fundamental |
 | `paper_run.py` | langkah 6 | paper trading (uji maju strategi) |
 | `brief.py` | langkah 7 | `data/brief_latest.md`, bahan analisa LLM |
-| `auto_analisa.py` | tiap hari (server) | LLM baca brief + isi artikel -> `data/analysis.json` |
+| `auto_analisa.py` | tiap hari (server) | LLM baca brief + isi artikel -> `data/analysis.json` + arsip buat Rapor |
 | `fetch_fundamentals.py` | mingguan/bulanan | PER, PBV, ROE, DER, margin |
 | `screen.py` | sesekali | pilih ulang saham likuid (`focus_list`) |
 | `backtest.py` | riset | uji aturan sinyal/exit ke data historis |
 
 `auto_analisa.py --test` = cek koneksi LLM, `--list-models` = daftar model provider aktif.
 Di Claude Code juga ada perintah `/analisa` (Claude yang baca artikel) — hasilnya ke `data/` lokal PC.
+
+## Rapor (ngukur saran app)
+
+Tiap pagi `auto_analisa.py` ngarsip analisanya (tabel `analysis_archive`). Menu Rapor ngitung ulang dari
+arsip + harga asli (`trade/rapor.py`), terpisah total dari jurnal asli:
+- **Portofolio uji** — modal Rp1,5 juta (`MODAL_UJI`) ngikutin Slicing Modal tiap pagi: beli di Entry (order
+  1 hari), jual kalau nyentuh garis jual (rumus sama dengan Jurnal), biaya beli 0,15% & jual 0,25%.
+- **Rapor saran** — tiap saran BELI: kebeli? kena Target atau Stop duluan? + rata-rata hasil BELI / TUNGGU /
+  HINDARI vs IHSG.
+Aturan lengkapnya tampil di app ("Cara ngukurnya"). Butuh ±50 saran (1-2 bulan) buat kesimpulan.
 
 ## Server
 
