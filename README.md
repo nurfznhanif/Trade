@@ -1,188 +1,116 @@
-# Trade — Analisis Saham IDX (Harga + Berita + Fundamental)
+# Trade IDX
 
-Alat bantu keputusan **beli/jual saham** (swing trading, harian–mingguan) berbasis
-**teknikal + sentimen berita + fundamental**, dengan **keputusan akhir dirangkum Claude (LLM)**.
-**Fokus: saham Indonesia (IDX)** — backtest 5 tahun nunjukin IDX punya edge, US enggak.
-Kode tetap market-agnostic (atur di [`trade/config.py`](trade/config.py) → `MARKETS`).
+Alat bantu keputusan swing trading saham Indonesia (IDX): data harga + berita + fundamental,
+dianalisa LLM tiap pagi, dibaca lewat **app HP** (React Native / Expo). Ada jurnal trading real
+dan slicing modal (bagi modal ke saham BELI pakai aturan risiko).
 
-> ⚠️ **Bukan nasihat keuangan.** Sistem ini alat bantu keputusan, bukan mesin ATM.
-> Jalur wajib sebelum pakai duit beneran: **backtest → paper trading → duit kecil.**
+> Bukan nasihat keuangan. Eksekusi order tetap di broker & keputusan di tangan sendiri.
 
-## Status: Fase 0–5 ✅ + Dashboard + Brief — operasional
+## Cara kerjanya
 
-| Fase | Isi | Status |
-|------|-----|--------|
-| 0 | Data pipeline: harga (yfinance) + berita (Google News RSS) → SQLite | ✅ |
-| 1 | Sentiment engine (skor berita −1..+1) | ✅ |
-| 2 | Signal engine (teknikal + sentimen → BUY/HOLD/SELL) + pagar fundamental | ✅ |
-| 3 | Backtest engine (point-in-time, anti-lookahead, trailing stop + biaya) | ✅ |
-| 4 | Paper trading (portfolio FULL vs TECH + benchmark, A/B sentimen) | ✅ |
-| — | Dashboard Streamlit + Keputusan Claude (`analysis.json`) + brief harian | ✅ |
-| 5 | Jurnal trading real (duit kecil): catat entry/exit, P/L, evaluasi vs sinyal | ✅ tooling |
-| + | `/analisa` diperluas: top-20 kandidat + **lensa big cap/LQ45** + penanda **musim MSCI** (`trade/msci.py`) | ✅ |
-| + | Jurnal dashboard: garis **Target Cuan** (checkpoint) + **horizon lama-tahan** (dari backtest) | ✅ |
-| + | `scripts/auto_analisa.py`: pipeline `/analisa` OTOMATIS (Gemini free + Tavily baca artikel) — otak buat app | 🧪 eksperimental |
-| + | App mobile (Expo/React Native) di `mobile/` — rangka, render `analysis.json` + bottom-nav | 🚧 WIP |
+```
+Server cloud (VPS), Senin-Jumat 05:00 WIB
+  scripts/daily.py         harga -> makro -> berita -> sentimen -> sinyal -> paper trading -> brief
+  scripts/auto_analisa.py  brief + ISI artikel berita -> LLM (DeepSeek/Gemini/OpenAI) -> data/analysis.json
+  backend (FastAPI)        nyajiin analisa, jurnal, berita, slicing ke app (pakai kunci akses)
+        |
+App HP (APK)              Analisa · Jurnal · Berita · Pengaturan
+```
 
-## Setup
+## Struktur folder
+
+```
+src/                  App HP (TypeScript)
+  App.tsx             header + menu bawah + pilih layar
+  screens/            satu folder/file per menu: analysis/, journal/, NewsScreen, SettingsScreen
+  components/         potongan UI yang dipakai lintas layar (menu bawah, dropdown, chart, form)
+  api.ts              klien server (alamat dicari otomatis, kunci akses)
+  analysis.ts         tipe analysis.json + warna aksi (BELI/TUNGGU/HINDARI)
+  theme.ts  ui.ts     warna bermakna + style bersama
+  format.ts           format angka & tanggal Indonesia
+assets/               ikon app + data contoh (tampil sebelum server ketemu)
+
+backend/              Server API (Python / FastAPI)
+  api.py              pintu masuk + kunci akses (server jalanin: uvicorn backend.api:app)
+  routes/             endpoint per menu app: analysis, news, journal, settings
+trade/                Inti Python: DB, harga, berita, sentimen, sinyal, risiko, jurnal, LLM, makro
+scripts/              Pipeline harian + alat (lihat tabel di bawah)
+deploy/               Pasang / update / copot di server Ubuntu
+
+app.json eas.json     konfigurasi Expo & build APK
+package.json          dependensi app + perintah (npm run ...)
+requirements.txt      dependensi Python
+data/                 trade.db, analysis.json, brief (TIDAK ke GitHub)
+.env                  API key LLM + kunci akses server (TIDAK ke GitHub)
+```
+
+## App HP
+
+```bash
+npm install
+```
+
+```bash
+npm start
+```
+
+`npm start` = buka lewat Expo Go (scan QR). `npm run web` = versi browser buat ngetes di laptop.
+`npm run typecheck` = cek TypeScript.
+
+Rilis ke HP yang udah terpasang APK (update OTA, gak perlu install ulang):
+
+```bash
+npm run ota -- "pesan update"
+```
+
+Build APK baru (cuma kalau ganti library native / versi app): `npm run apk`.
+
+App otomatis nyari server: cloud dulu, lalu alamat tersimpan, lalu backend lokal `:8000`.
+Kunci akses diisi sekali di menu Pengaturan (disimpan di HP, gak ditanam di kode karena repo publik).
+
+## Backend & pipeline di PC (buat ngembangin)
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate            # Windows
-pip install -r requirements.txt
+.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\python.exe -m uvicorn backend.api:app --port 8000
 ```
 
-## Alur harian (3 langkah)
+Ngetes pakai **salinan** DB biar jurnal asli gak kesentuh: set `TRADE_DATA_DIR` ke folder berisi
+salinan `trade.db` (semua script & backend ikut pakai folder itu).
 
-```bash
-# 1. Refresh SEMUA data + sinyal + brief + paper trading (sekali gas)
-python scripts/daily.py           # otomatis juga bikin data/brief_latest.md
+| Script | Kapan | Isinya |
+|---|---|---|
+| `daily.py` | tiap hari (server) | jalanin 7 langkah di bawah berurutan |
+| `backfill_prices.py` | langkah 1 | harga harian (yfinance) |
+| `fetch_macro.py` | langkah 2 | IHSG, kurs, emas, minyak, DXY, yield AS, VIX + regime IHSG |
+| `fetch_news.py` | langkah 3 | berita Google News per saham |
+| `score_news.py` | langkah 4 | skor sentimen (kamus istilah bursa) |
+| `generate_signals.py` | langkah 5 | sinyal BUY/HOLD/SELL + pagar fundamental |
+| `paper_run.py` | langkah 6 | paper trading (uji maju strategi) |
+| `brief.py` | langkah 7 | `data/brief_latest.md`, bahan analisa LLM |
+| `auto_analisa.py` | tiap hari (server) | LLM baca brief + isi artikel -> `data/analysis.json` |
+| `fetch_fundamentals.py` | mingguan/bulanan | PER, PBV, ROE, DER, margin |
+| `screen.py` | sesekali | pilih ulang saham likuid (`focus_list`) |
+| `backtest.py` | riset | uji aturan sinyal/exit ke data historis |
 
-# 2. Di Claude Code, ketik:  /analisa
-#    -> Claude baca brief + BACA ARTIKEL BERITA ASLI (web) tiap kandidat
-#       (cross-check clickbait judul) -> tulis keputusan ke data/analysis.json
+`auto_analisa.py --test` = cek koneksi LLM, `--list-models` = daftar model provider aktif.
+Di Claude Code juga ada perintah `/analisa` (Claude yang baca artikel) — hasilnya ke `data/` lokal PC.
 
-# 3. Lihat dashboard
-streamlit run dashboard.py        # -> http://localhost:8501
-```
+## Server
 
-**Nggak pakai scheduler — `/analisa` yang jamin data fresh:** tiap kamu ketik `/analisa`, Claude
-ngecek tanggal data dulu; kalau basi (lebih tua dari hari bursa terakhir) dia **otomatis narik
-data baru** (`scripts/daily.py`) sebelum mutusin. Jadi satu perintah = data fresh + keputusan —
-tanpa task yang bisa mati di tengah jalan atau laptop kebangun sendiri jam 8 pagi. (Masih bisa
-`python scripts/daily.py` manual kapan aja kalau mau.)
+Pasang sekali (root, Ubuntu): `deploy/setup_server.sh`. Setelah itu server narik kode baru dari
+GitHub tiap 15 menit (`deploy/auto_update.sh`) — jadi **push ke `main` = langsung ke server**.
+Cek versi yang jalan: `GET /health` -> `version` (commit).
 
-## Ritme operasional (cheatsheet)
+Path yang dipanggil server dan **jangan dipindah/rename** (kalau dipindah, server mati sampai unit
+systemd diedit manual sebagai root): `backend/api.py`, `scripts/daily.py`, `scripts/auto_analisa.py`,
+`deploy/auto_update.sh`, `deploy/terima_data.sh`, `requirements.txt`. Server pakai Python 3.10.
 
-Sistem udah kelar (Fase 0–5). Sekarang tinggal **dipakai** — low-maintenance.
+Isi `.env` (diatur dari menu Pengaturan app, kecuali token):
 
-**Tiap pagi hari bursa:**
-- [ ] Buka Claude Code → ketik **`/analisa`** — kalau data basi, Claude **auto-refresh** dulu (`daily.py`), baru baca artikel asli & update keputusan. Nggak usah tarik data manual.
-- [ ] `streamlit run dashboard.py` → lihat **Keputusan Claude**
-- [ ] Kalau trading: eksekusi di **broker sendiri**, lalu catat di tab **Jurnal**
-
-**Mingguan:**
-- [ ] `python scripts/fetch_fundamentals.py` (fundamental berubah pelan)
-- [ ] Sesekali `python scripts/screen.py` (refresh saham likuid → `focus_list`)
-
-**Fase sekarang: BUKTIKAN dulu.** Jalur wajib: backtest → paper → **duit kecil + jurnal** → baru
-scale modal. Biarin paper trading + jurnal jalan berminggu-minggu, pantau: win rate naik?
-disiplin stop? keputusan mana yang cuan? **Kumpulin bukti SEBELUM nambah modal.**
-
-> ⚠️ Bukan nasihat keuangan. Eksekusi & keputusan di tangan kamu; alat ini bantu analisa + catat.
-
-## Jurnal trading (Fase 5)
-
-Catat trade **REAL** (duit kecil) buat evaluasi disiplin — **bukan nasihat / eksekusi order**.
-P/L pakai model biaya IDX yang sama dengan paper/backtest. 1 lot = 100 lembar.
-
-```bash
-# catat posisi baru
-python scripts/journal.py add CMRY --price 4690 --lot 2 --stop 4480 --note "ikut /analisa"
-# tutup posisi (id dari report)
-python scripts/journal.py close 1 --price 4900
-# laporan P/L + trailing stop + bandingin sama sinyal sistem
-python scripts/journal.py
-# kalkulator ukuran posisi (risk-based): berapa lot biar risiko terkontrol
-python scripts/journal.py size --capital 1500000 --entry 4690 --stop 4480 --risk 2
-```
-
-Muncul juga di tab **Jurnal** dashboard: posisi terbuka + P/L + **trailing stop** (di mana
-keluar, biar konsisten sama backtest) + sinyal sistem + kalkulator **sizing** (berapa lot).
-Data jurnal **privat** (di `data/trade.db`, gitignored).
-
-> **Kenapa trailing & sizing penting:** backtest nunjukin exit *trailing* jauh ngalahin *target fixed*
-> (avg winner 20% vs 14% — motong pemenang = buang edge). Dan sizing risk-based bikin tiap kekalahan
-> ~sama & terkontrol. Entry cuma ~20% dari hasil; **risk & exit ~80%.**
-
-## Otak dashboard: `data/analysis.json`
-
-Dashboard menaruh **Keputusan Claude di depan**, sinyal mesin cuma pembanding.
-`analysis.json` diisi lewat `/analisa`: Claude baca `brief_latest.md` **plus artikel
-berita aslinya** (via web, cross-check clickbait judul) — bukan cuma judul. Formatnya:
-
-```json
-{
-  "generated": "2026-08-30",
-  "macro": "IHSG ... USD/IDR ... tema sektor ...",
-  "calls": [
-    {"ticker": "BBNI.JK", "action": "BELI", "conviction": "Tinggi", "flag": "good",
-     "entry": 3710, "target": 4050, "stop": 3480, "reason": "..."}
-  ]
-}
-```
-`action`: BELI / BELI (tenang) / BELI (spekulatif) / TUNGGU PULLBACK / HINDARI · `flag`: good / neutral / caution / danger.
-Ada juga field `positions` (review posisi jurnal: **TAHAN / WASPADA / JUAL**), dan `modal`+`lot` per call
-kalau dijalankan `/analisa modal <angka>` (sizing otomatis). `/analisa` selalu ikut nilai **big cap/LQ45**
-(lensa turnover, walau skor mesin HOLD) dan nyelipin peringatan kalau lagi **musim rebalancing MSCI**.
-
-## App mobile + pipeline otomatis (WIP)
-
-Biar nggak perlu buka Claude Code tiap hari, ada dua bagian baru (masih eksperimental):
-
-- **`scripts/auto_analisa.py`** — versi KODE dari `/analisa`: kumpulin data + **baca BADAN artikel
-  LOKAL** (`trade/newsbody.py`: decode shell Google News → `trafilatura`, **tanpa API/kredit**) →
-  **Gemini (free tier)** mutusin BELI/HINDARI + alasan (skeptis clickbait) → tulis
-  `data/analysis.json`. Otak gratis pengganti Claude Code buat backend/otomatis. **Cuma 1 key**:
-  `GEMINI_API_KEY` di `.env` (**gitignored**).
-  ```bash
-  .venv/Scripts/python.exe scripts/auto_analisa.py --list-models    # cek model yang bisa dipakai
-  .venv/Scripts/python.exe scripts/auto_analisa.py --modal 100jt     # analisa + sizing lot
-  ```
-- **`backend/api.py` + `scripts/serve.py`** — backend FastAPI buat app mobile (serve analisa,
-  jalanin auto_analisa, atur LLM). **Jalanin sekali tiap mau pakai app:**
-  ```bash
-  .venv/Scripts/python.exe scripts/serve.py    # nyalain backend + tunnel cloudflared, cetak URL publik
-  ```
-  Tempel URL yang muncul ke app (Pengaturan → Alamat Backend). Butuh `tools/cloudflared.exe`
-  (download sekali dari releases cloudflare).
-- **`mobile/`** — app mobile (Expo + React Native + TS): kartu analisa + Jurnal + **menu Pengaturan LLM**
-  (bongkar-pasang provider dari HP), narik data LIVE dari backend, tombol Analisa jalanin pipeline.
-  ```bash
-  cd mobile && npx expo start --tunnel     # buka via Expo Go (scan QR). Nanti: build APK biar standalone
-  ```
-
-## Atur saham yang dipantau
-
-Screener likuiditas ([`scripts/screen.py`](scripts/screen.py)) milih otomatis `focus_list`
-dari seluruh universe IDX. Untuk paksa/tambah manual, edit
-[`config/watchlist.yaml`](config/watchlist.yaml) (IDX pakai suffix `.JK`, mis. `BBCA.JK`).
-
-## Struktur
-
-```
-trade/            package inti (market-agnostic)
-  config.py       path + watchlist + MARKETS
-  db.py           SQLite: skema + simpan
-  prices.py       tarik harga (yfinance)
-  news.py         tarik berita (Google News RSS)
-  newsbody.py     baca BADAN artikel (decode shell Google News + trafilatura) buat auto_analisa
-  sentiment.py    skor sentimen berita
-  fundamentals.py rasio + bendera merah (pagar anti-sampah)
-  macro.py        regime IHSG (vs MA200) + indikator makro (kurs/komoditas/global)
-  msci.py         penanda musim rebalancing MSCI (arus asing big cap = flow, bukan tesis)
-  risk.py         sizing (risk-based) + trailing stop (exit disiplin, samain backtest)
-  indicators.py   MA / RSI / ATR
-  signals.py      signal engine (teknikal + sentimen)
-  backtest.py     backtest point-in-time (trailing + biaya)
-  paper.py        simulasi portfolio paper
-  journal.py      jurnal trading real (Fase 5): P/L + evaluasi vs sinyal
-  screener.py     screener likuiditas -> focus_list
-  universe.py     ambil daftar saham IDX resmi
-scripts/          entry point (daily.py orkestrator, auto_analisa.py = /analisa via Gemini, dll.)
-config/           watchlist.yaml
-data/             trade.db, analysis.json, brief_*.md, *.csv  (di-gitignore)
-dashboard.py      Streamlit (Beranda/Sinyal/Jurnal + Target Cuan & horizon di posisi)
-mobile/           app mobile Expo/React Native (rangka) — .env & node_modules gitignored
-```
-
-## Jalanin per-bagian (kalau perlu)
-
-```bash
-python scripts/init_db.py            # bikin DB + skema
-python scripts/load_universe.py      # tarik daftar saham IDX resmi
-python scripts/backfill_prices.py    # tarik harga historis
-python scripts/screen.py             # screener likuiditas -> focus_list
-python scripts/fetch_fundamentals.py # rasio fundamental (mingguan, berubah pelan)
-python scripts/backtest.py           # backtest engine
-```
+| Variabel | Isi |
+|---|---|
+| `TRADE_API_TOKEN` | kunci akses app (wajib di server; kosong = bebas, buat ngetes di PC) |
+| `LLM_PROVIDER`, `LLM_MODEL` | otak analisa aktif: `deepseek` / `gemini` / `openai` + nama model |
+| `LLM_KEY_<PROVIDER>` | API key per provider, mis. `LLM_KEY_DEEPSEEK` |

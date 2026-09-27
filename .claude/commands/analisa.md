@@ -4,7 +4,10 @@ argument-hint: "[BBRI = deep-dive · 'modal 1500000' = hitung lot]"
 ---
 
 Kamu lagi ngerjain **ANALISA HARIAN SAHAM IDX** buat project ini. Hasil akhir: file
-`data/analysis.json` yang dibaca dashboard Streamlit. Inti aturannya:
+`data/analysis.json` di PC ini.
+
+> PENTING: app HP baca analisa dari **server cloud** (dibikin otomatis tiap pagi oleh `scripts/auto_analisa.py`),
+> BUKAN dari file PC ini. Hasil `/analisa` ini buat dibaca/dibandingin di PC. Inti aturannya:
 
 > **KAMU (LLM) yang mutusin — dengan baca DATA + ISI ARTIKEL berita beneran, BUKAN skor
 > rule-based/lexicon. Judul media saham Indonesia sering clickbait: SELALU cross-check ke badan berita.**
@@ -40,17 +43,17 @@ Engine skor itu momentum+berita, jadi big cap yang lagi flat/basing atau kadung 
 Untuk tiap kandidat kuat (±12–20 teratas dari step 1, atau ticker di `$ARGUMENTS`) **DAN semua big cap dari step 1b**:
 - **WebSearch**: nama perusahaan + ticker + topik (mis. "laba semester", "target harga", "berita terbaru").
 - **WebFetch 1–2 artikel media BENERAN** (URL media langsung dari hasil search).
-  ⚠️ Link `news.google.com/rss/articles/...` di DB **NGGAK bisa dibuka** (cangkang) — cari URL media aslinya lewat WebSearch.
+  Catatan: link `news.google.com/rss/articles/...` di DB **NGGAK bisa dibuka** (cangkang) — cari URL media aslinya lewat WebSearch.
 - Baca **BADAN**-nya: verifikasi angka, cari **caveat/risiko yang disembunyiin judul** —
   kas/arus kas, utang, insider selling, asumsi di balik target analis, suspensi, paywall, dsb.
 
-**3. Baca makro** dari arus berita (arah IHSG, arus asing, tema sektor panas). Jujur: angka
-IHSG belum ada di DB, jadi tone makro dibaca dari berita.
+**3. Baca makro**: REGIME IHSG + tren kurs/komoditas ada di bagian MAKRO `brief_latest.md`; arus asing &
+tema sektor panas dibaca dari berita.
 - **Cek MUSIM MSCI** (rebalancing MSCI = arus asing jumbo di saham likuid/big cap, sering teknikal bukan fundamental):
   `.venv/Scripts/python.exe -c "from datetime import date;from trade.msci import msci_status;print(msci_status(date.today())['note'])"`
   Kalau `near`/lagi musim → SELIPKAN peringatannya di field `macro` + laporan (ingatkan: lonjakan/tekanan asing dekat rebalancing itu FLOW, jangan panik jual/kejar cuma gara-gara ini; big cap paling kena). Kalau aman → cukup sebut singkat tanggal rebalance berikutnya.
 
-**4. Tulis `data/analysis.json`** — skema PERSIS (dibaca dashboard):
+**4. Tulis `data/analysis.json`** — skema PERSIS (sama dengan yang dibaca app):
 ```json
 {
   "generated": "YYYY-MM-DD",
@@ -86,7 +89,7 @@ IHSG belum ada di DB, jadi tone makro dibaca dari berita.
   `python -c "from trade.risk import position_size; print(position_size(MODAL, ENTRY, STOP, risk_pct=0.02)['lot'])"`
   (atau rumus: `lot = floor(modal*risk / ((entry-stop)*100))`, cap `lot*100*entry <= modal`; kalau 1 lot
   aja kemahalan → `lot: 0`). Tambah `"lot"` per call BELI + `"modal"` top-level; di `reason` sebut singkat
-  (mis. "modal 1,5jt → 1 lot"). TANPA modal: cukup ingetin user pakai kalkulator dashboard.
+  (mis. "modal 1,5jt → 1 lot"). TANPA modal: cukup ingetin user pakai kartu Slicing Modal di app.
 - **BIG CAP (dari step 1b) WAJIB dinilai tiap hari** — walau skor mesin HOLD (engine momentum sering nge-HOLD big cap yang flat/basing ATAU yang udah overbought). Nilai dari VALUASI + BERITA + teknikal, bukan cuma momentum, lalu kasih verdict normal (BELI/BELI tenang/TUNGGU PULLBACK/HINDARI) dan masukin ke `calls`. Big cap uptrend tapi RSI>70 → `TUNGGU PULLBACK`; big cap murah/berkatalis & belum overbought → boleh `BELI`; yang basing tanpa katalis → boleh di-skip TAPI sebut singkat di laporan kenapa. Jangan diamkan big cap tanpa keterangan.
 - RSI > 70 **atau** sudah +25–30% sebulan → `TUNGGU PULLBACK` (jangan kejar).
 - Insider selling / rugi / PER cangkang / pump / suspensi → `HINDARI` atau `caution`, **walau skor mesin hijau**.
