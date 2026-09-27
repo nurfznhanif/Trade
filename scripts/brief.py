@@ -1,5 +1,5 @@
-"""Dump BRIEF HARIAN — satu file ringkas berisi semua yang dibutuhin buat nyusun
-`data/analysis.json` (keputusan beli/jual ala Claude), tanpa harus query DB tangan.
+"""BRIEF HARIAN — satu file ringkas berisi semua bahan buat analisa LLM (scripts/auto_analisa.py
+& /analisa), tanpa harus query DB tangan. Langkah terakhir daily.py.
 
 Gabungin per kandidat: sinyal mesin + teknikal (high/low 20d & 60d, %1bulan, jarak
 ke high) + fundamental + bendera merah + sentimen + 3 headline terbaru, plus daftar
@@ -12,23 +12,17 @@ Jalanin:
 """
 from __future__ import annotations
 
+import _bootstrap  # noqa: F401  (path repo + UTF-8)
+
 import argparse
-import pathlib
-import sys
 from datetime import datetime
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-try:
-    sys.stdout.reconfigure(encoding="utf-8")
-except Exception:
-    pass
+import pandas as pd
 
-import pandas as pd  # noqa: E402
-
-from trade.config import DATA_DIR  # noqa: E402
-from trade.db import get_connection  # noqa: E402
-from trade.fundamentals import red_flags, sanitize  # noqa: E402
-from trade.macro import snapshot as macro_snapshot  # noqa: E402
+from trade.config import BRIEF_PATH, DATA_DIR
+from trade.db import get_connection
+from trade.fundamentals import red_flags, sanitize
+from trade.macro import snapshot as macro_snapshot
 
 PUMP_1MO = 0.60      # naik >60% sebulan = wajib curiga pump
 PUMP_PER = 200.0     # PER absurd = cangkang / tanpa laba
@@ -120,7 +114,7 @@ def main():
     # --- overlay MAKRO (data, bukan cuma narasi berita) ---
     ms = macro_snapshot(conn)
     r = ms["regime"]
-    w(f"## 🌐 MAKRO — REGIME IHSG: {r['regime'].upper()}")
+    w(f"## MAKRO — REGIME IHSG: {r['regime'].upper()}")
     w(f"    {r['note']}")
     if r["level"]:
         ma200 = f"{r['ma200']:.0f}" if r["ma200"] else "—"
@@ -151,17 +145,17 @@ def main():
 
         tags = []
         if chg is not None and chg >= PUMP_1MO:
-            tags.append("🚩PUMP?")
+            tags.append("[PUMP?]")
             pump.append(tk)
         elif chg is not None and chg >= HOT_1MO:
-            tags.append("🔥HOT")
+            tags.append("[HOT]")
             hot.append(tk)
         if per is not None and per >= PUMP_PER:
-            tags.append(f"🚩PER {per:.0f}")
+            tags.append(f"[PER {per:.0f}]")
             if tk not in pump:
                 pump.append(tk)
         if rf:
-            tags.append("⚠" + "/".join(rf))
+            tags.append("[RAWAN: " + "/".join(rf) + "]")
         tagstr = ("   " + "  ".join(tags)) if tags else ""
 
         w(f"### {tk}  ·  {names.get(tk, '')}  ·  [{s['action']} skor {_f(s['score'])}]"
@@ -187,10 +181,10 @@ def main():
         w("")
 
     if pump:
-        w(f"## ⚠️ PUMP WATCH — jangan dikejar / verifikasi dulu: {', '.join(pump)}")
+        w(f"## PUMP WATCH — jangan dikejar / verifikasi dulu: {', '.join(pump)}")
         w("")
     if hot:
-        w(f"## 🔥 HOT (naik >25% sebulan — ukuran posisi kecil): {', '.join(hot)}")
+        w(f"## HOT (naik >25% sebulan — ukuran posisi kecil): {', '.join(hot)}")
         w("")
 
     op = DATA_DIR / "paper_open_positions.csv"
@@ -217,12 +211,11 @@ def main():
     text = "\n".join(lines)
     out = DATA_DIR / f"brief_{asof}.md"
     out.write_text(text, encoding="utf-8")
-    latest = DATA_DIR / "brief_latest.md"
-    latest.write_text(text, encoding="utf-8")
+    BRIEF_PATH.write_text(text, encoding="utf-8")
 
     if not args.quiet:
         print(text)
-    print(f"\n💾 brief → {out}  (+ {latest.name})")
+    print(f"\nbrief -> {out}  (+ {BRIEF_PATH.name})")
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from datetime import date
 
 import numpy as np
 
@@ -142,3 +143,53 @@ def summarize(trades):
         "avg_bars": np.mean([t["bars"] for t in trades]),
         "expectancy": rets.mean(),
     }
+
+
+# ------------------------------------------------------------------ data buat runner (backtest & paper)
+def day_ord(iso: str | None) -> int | None:
+    """'2026-09-25...' -> nomor hari (ordinal) buat bandingin tanggal cepat. Gagal -> None."""
+    try:
+        return date.fromisoformat(iso[:10]).toordinal()
+    except (ValueError, TypeError):
+        return None
+
+
+def indicator_arrays(close_s, high_s, low_s):
+    """MA20, MA50, RSI14, ATR14 per hari (rolling = cuma pakai data s/d hari itu -> anti-lookahead).
+    Input pandas Series, output array numpy sejajar harga."""
+    import pandas as pd
+    ma20 = close_s.rolling(20).mean().to_numpy()
+    ma50 = close_s.rolling(50).mean().to_numpy()
+    delta = close_s.diff()
+    gain = delta.clip(lower=0).rolling(14).mean()
+    loss = (-delta.clip(upper=0)).rolling(14).mean()
+    rsi_a = (100 - 100 / (1 + gain / loss)).to_numpy()
+    prev = close_s.shift(1)
+    tr = pd.concat([high_s - low_s, (high_s - prev).abs(), (low_s - prev).abs()], axis=1).max(axis=1)
+    atr_a = tr.rolling(14).mean().to_numpy()
+    return ma20, ma50, rsi_a, atr_a
+
+
+def load_news_sentiment(conn, tickers) -> dict[str, tuple[list, list]]:
+    """{ticker: ([ordinal_tanggal...], [skor_sentimen...])} buat semua berita yang udah diskor."""
+    tset = set(tickers)
+    out: dict[str, tuple[list, list]] = {}
+    for r in conn.execute("SELECT ticker, published, sent_score FROM news "
+                          "WHERE sent_score IS NOT NULL AND published IS NOT NULL"):
+        if r["ticker"] not in tset:
+            continue
+        o = day_ord(r["published"])
+        if o is not None:
+            ords, scores = out.setdefault(r["ticker"], ([], []))
+            ords.append(o)
+            scores.append(r["sent_score"])
+    return out
+
+
+def load_focus_prices(conn, tickers):
+    """Harga harian (high/low/close) saham focus_list, urut ticker lalu tanggal (DataFrame)."""
+    import pandas as pd
+    df = pd.read_sql_query(
+        "SELECT p.ticker, p.date, p.high, p.low, p.close FROM prices p "
+        "JOIN focus_list f ON f.ticker = p.ticker ORDER BY p.ticker, p.date", conn)
+    return df[df["ticker"].isin(set(tickers))]

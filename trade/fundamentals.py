@@ -54,7 +54,7 @@ def sanitize(f: dict) -> dict:
 
     yfinance ngasih dividendYield dalam PERSEN (mis. 3.33 = 3,33%), padahal roe/margin
     diperlakukan sebagai FRAKSI. Di sini div_yield dibagi 100 biar konsisten (0.0333)
-    dan tampil bener (dikali 100 lagi) di dashboard/brief. Terima nilai MENTAH dari DB.
+    dan tampil bener (dikali 100 lagi) di brief. Terima nilai MENTAH dari DB.
     """
     g = dict(f)
     for k, (lo, hi) in _SANE.items():
@@ -87,7 +87,3 @@ def red_flags(f: dict) -> list[str]:
         flags.append("ekuitas negatif (PBV<0)")
 
     return flags
-
-
-def is_healthy(f: dict) -> bool:
-    return not red_flags(f)

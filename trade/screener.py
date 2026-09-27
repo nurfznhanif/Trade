@@ -10,15 +10,11 @@ from dataclasses import dataclass
 
 @dataclass
 class ScreenParams:
-    lookback: int = 20                 # jumlah hari terakhir buat hitung rata2
-    min_ndays: int = 15                # minimal hari data (buang yg terlalu sepi/baru)
-
-    us_min_price: float = 2.0                   # USD
-    us_min_turnover: float = 5_000_000          # USD/hari
-
-    idx_min_price: float = 100.0                # IDR
-    idx_min_turnover: float = 5_000_000_000     # IDR/hari (5 miliar)
-    idx_skip_boards: tuple = ("Acceleration",)  # papan startup mini -> skip
+    lookback: int = 20                      # jumlah hari terakhir buat hitung rata2
+    min_ndays: int = 15                     # minimal hari data (buang yg terlalu sepi/baru)
+    min_price: float = 100.0                # Rp
+    min_turnover: float = 5_000_000_000     # Rp/hari (5 miliar)
+    skip_boards: tuple = ("Acceleration",)  # papan startup mini -> skip
 
 
 _METRIC_SQL = """
@@ -54,23 +50,12 @@ def screen(conn, p: ScreenParams | None = None) -> list[dict]:
 
         last_close = r["last_close"]
         turnover = r["avg_turnover"] or 0.0
-        if last_close is None or r["ndays"] < p.min_ndays:
-            continue
-
-        market = m["market"]
-        if market == "US":
-            if last_close < p.us_min_price or turnover < p.us_min_turnover:
-                continue
-        elif market == "IDX":
-            if (m["board"] in p.idx_skip_boards
-                    or last_close < p.idx_min_price
-                    or turnover < p.idx_min_turnover):
-                continue
-        else:
+        if (last_close is None or r["ndays"] < p.min_ndays or m["board"] in p.skip_boards
+                or last_close < p.min_price or turnover < p.min_turnover):
             continue
 
         passed.append({
-            "ticker": r["ticker"], "name": m["name"], "market": market,
+            "ticker": r["ticker"], "name": m["name"], "market": m["market"],
             "board": m["board"], "last_close": last_close,
             "avg_turnover": turnover, "avg_volume": r["avg_volume"],
             "ndays": r["ndays"],

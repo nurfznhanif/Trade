@@ -67,7 +67,7 @@ def decide(f: dict, p: SignalParams | None = None) -> dict:
     fund_flags = f.get("fund_flags")
     if action == "BUY" and fund_flags:
         action = "HOLD"
-        reasons.append("⚠ ditahan (fundamental): " + "; ".join(fund_flags))
+        reasons.append("ditahan (fundamental): " + "; ".join(fund_flags))
 
     # --- Level risiko (cuma buat BUY) ---
     stop = target = None

@@ -10,19 +10,24 @@ BUKAN gate keras. Entry pas risk-off masih rata2 +2,86% (vs +3,56% risk-on) —
 skip total malah MOTONG profit (total ret 14.293% -> 10.232%). Jadi risk-off =
 selektif + ukuran kecil, bukan stop.
 
-`baik`: arah yang BAGUS buat saham IDX. +1 = naik itu bagus; -1 = naik itu jelek
-(mis. USD/IDR naik = rupiah lemah = arus asing keluar = jelek).
+Kolom tiap indikator di MACRO (urutan = urutan tampil di app):
+  baik  : arah yang BAGUS buat saham IDX. +1 = naik itu bagus; -1 = naik itu jelek
+          (mis. USD/IDR naik = rupiah lemah = arus asing keluar = jelek).
+  unit  : tampilan di app — "Rp" (depan), "%" (belakang), "" (indeks).
+  per   : satuan komoditas; to_rp = faktor harga dolar -> Rupiah (dikali kurs USD/IDR hari itu).
 """
 from __future__ import annotations
 
+TROY_OZ_GR = 31.1035   # 1 troy ounce = 31,1035 gram
+
 MACRO = {
-    "^JKSE":    {"label": "IHSG",    "grup": "domestik",  "baik": +1},
-    "IDR=X":    {"label": "USD/IDR", "grup": "domestik",  "baik": -1},  # naik = rupiah lemah
-    "GC=F":     {"label": "Emas",    "grup": "komoditas", "baik": +1},  # tailwind ARCI/HRTA
-    "CL=F":     {"label": "Minyak",  "grup": "komoditas", "baik": +1},  # proxy energi/komoditas
-    "DX-Y.NYB": {"label": "DXY",     "grup": "global",    "baik": -1},  # dolar kuat = keluar EM
-    "^TNX":     {"label": "US 10Y",  "grup": "global",    "baik": -1},  # yield naik = tekan EM
-    "^VIX":     {"label": "VIX",     "grup": "global",    "baik": -1},  # takut = risk-off
+    "GC=F":     {"label": "Emas",    "baik": +1, "unit": "Rp", "per": "gr", "to_rp": 1 / TROY_OZ_GR},
+    "IDR=X":    {"label": "USD/IDR", "baik": -1, "unit": "Rp"},   # naik = rupiah lemah
+    "^JKSE":    {"label": "IHSG",    "baik": +1, "unit": ""},
+    "CL=F":     {"label": "Minyak",  "baik": +1, "unit": "Rp", "per": "barel", "to_rp": 1.0},
+    "DX-Y.NYB": {"label": "DXY",     "baik": -1, "unit": ""},     # dolar kuat = dana keluar EM
+    "^TNX":     {"label": "US 10Y",  "baik": -1, "unit": "%"},    # yield naik = tekan EM
+    "^VIX":     {"label": "VIX",     "baik": -1, "unit": ""},     # takut = risk-off
 }
 
 
@@ -83,11 +88,36 @@ def load_series(conn, ticker: str) -> list:
 
 
 def snapshot(conn) -> dict:
-    """Gambaran makro lengkap buat dashboard/brief: regime IHSG + semua indikator."""
+    """Gambaran makro buat brief: regime IHSG + tren sebulan tiap indikator."""
     out = {"regime": ihsg_regime(load_series(conn, "^JKSE")), "indikator": []}
     asof = conn.execute("SELECT MAX(date) FROM macro").fetchone()
     out["asof"] = asof[0] if asof else None
     for tk, meta in MACRO.items():
         s = load_series(conn, tk)
-        out["indikator"].append({"ticker": tk, **meta, **indicator(s, meta["baik"])})
+        out["indikator"].append({"ticker": tk, "label": meta["label"], **indicator(s, meta["baik"])})
+    return out
+
+
+def latest(conn) -> list[dict]:
+    """Angka terakhir tiap indikator + % perubahan harian (strip Makro di app).
+    Emas & minyak dalam RUPIAH pakai kurs hari itu, jadi perubahannya ikut gerak kurs juga."""
+    last2 = {tk: conn.execute("SELECT date, close FROM macro WHERE ticker=? ORDER BY date DESC LIMIT 2",
+                              (tk,)).fetchall() for tk in MACRO}
+    fx = last2["IDR=X"]
+    fx_last = fx[0]["close"] if fx else None
+    fx_prev = fx[1]["close"] if len(fx) > 1 else fx_last
+    out = []
+    for tk, m in MACRO.items():
+        rows = last2[tk]
+        if not rows:
+            continue
+        last = rows[0]["close"]
+        prev = rows[1]["close"] if len(rows) > 1 else last
+        if "to_rp" in m:
+            if not fx_last:
+                continue
+            last, prev = last * fx_last * m["to_rp"], prev * (fx_prev or fx_last) * m["to_rp"]
+        chg = round((last / prev - 1) * 100, 2) if prev else 0.0
+        out.append({"ticker": tk, "label": m["label"], "unit": m["unit"], "per": m.get("per"),
+                    "last": last, "chg": chg, "date": rows[0]["date"]})
     return out

@@ -1,9 +1,10 @@
-"""Mesin sentimen — dibikin SWAPPABLE.
+"""Sentimen berita = LEXICON (kamus kata/frasa bursa, EN+ID). Skor (pos-neg)/(pos+neg) di [-1, 1].
 
-Semua scorer implement interface `SentimentScorer` (punya .score(text) -> dict).
-Baseline sekarang: `LexiconScorer` (kamus kata bilingual EN+ID, tanpa dep berat).
-Upgrade nanti: FinBERT (EN) / IndoBERT (ID) / Ollama — tinggal bikin kelas baru
-dengan interface yang sama, terus diadu di backtest mana yang paling akur.
+Kenapa bukan model NLP (BERT): udah dites Agu 2026 dan KALAH buat judul saham IDX —
+`w11wo/indonesian-roberta-base-sentiment-classifier` cenderung netral semua, dan
+`michaelmanurung/finbert-indonesia` malah baca 'Asing Borong BBCA' 95% NEGATIF.
+Sentimen finansial (bullish/bearish) beda sama sentimen bahasa; kamus yang paham istilah
+bursa (borong / net sell / anjlok) justru lebih akur. Jangan diulang tanpa model finansial-ID baru.
 """
 from __future__ import annotations
 
@@ -86,19 +87,8 @@ def strip_html(text: str | None) -> str:
     return _TAG_RE.sub(" ", text or "")
 
 
-class SentimentScorer:
-    """Interface. Semua scorer wajib punya .score(text) -> dict."""
-    name = "base"
-
-    def score(self, text: str) -> dict:
-        raise NotImplementedError
-
-    def score_many(self, texts):
-        return [self.score(t) for t in texts]
-
-
-class LexiconScorer(SentimentScorer):
-    """Baseline: hitung kata positif vs negatif. Skor = (pos-neg)/(pos+neg) di [-1,1]."""
+class LexiconScorer:
+    """Hitung kata/frasa positif vs negatif di judul + ringkasan berita."""
     name = "lexicon"
 
     def __init__(self, threshold: float = 0.1):
@@ -123,74 +113,3 @@ class LexiconScorer(SentimentScorer):
             label = "neutral"
         return {"label": label, "score": round(score, 3),
                 "pos": pos, "neg": neg, "scorer": self.name}
-
-
-class IndoBertScorer(SentimentScorer):
-    """Scorer transformer (OPSIONAL, EKSPERIMENTAL) — interface swappable buat model NLP.
-
-    ⚠️ HASIL TES (Agu 2026): model Indonesia off-the-shelf yang dites JUSTRU KALAH dari
-    lexicon buat JUDUL berita saham:
-      - umum `w11wo/indonesian-roberta-base-sentiment-classifier` → cenderung 'neutral'
-        semua (mis. 'Asing Borong BBCA' & 'IHSG Anjlok' dua-duanya dibaca netral);
-      - keuangan `michaelmanurung/finbert-indonesia` → malah keliru ('Asing Borong BBCA'
-        di-skor 95% NEGATIF).
-    Sebabnya: sentimen FINANSIAL (bullish/bearish) beda dari sentimen LINGUISTIK (emosi
-    kalimat). Lexicon 'bodoh' menang karena kamusnya paham istilah saham (borong/net sell/
-    anjlok). Jadi kelas ini BUKAN default — disimpen sebagai infrastruktur kalau nanti ada
-    model finance-Indonesia yang lebih akur (tinggal `IndoBertScorer(model="...")`).
-
-    Butuh `pip install torch transformers` (~GB). Skor dipetakan ke [-1,1] =
-    P(positif) − P(negatif). torch/transformers di-import DI DALAM __init__ biar
-    `LexiconScorer` tetap jalan tanpa dep berat itu.
-    """
-    name = "indobert"
-    DEFAULT_MODEL = "w11wo/indonesian-roberta-base-sentiment-classifier"
-
-    def __init__(self, model: str | None = None, batch_size: int = 32,
-                 max_length: int = 256):
-        from transformers import pipeline          # import berat — sengaja lokal
-        try:
-            import torch
-            device = 0 if torch.cuda.is_available() else -1
-        except Exception:
-            device = -1
-        self.batch_size = batch_size
-        self.max_length = max_length
-        self.model_id = model or self.DEFAULT_MODEL
-        self.pipe = pipeline("sentiment-analysis", model=self.model_id, device=device)
-
-    @staticmethod
-    def _to_signed(scores: list) -> dict:
-        """scores: list of {label, score} (semua kelas). -> skema {label,score,pos,neg,scorer}."""
-        d = {str(s["label"]).lower(): float(s["score"]) for s in scores}
-        pos = d.get("positive", d.get("positif", d.get("label_2", 0.0)))
-        neg = d.get("negative", d.get("negatif", d.get("label_0", 0.0)))
-        neu = d.get("neutral", d.get("netral", d.get("label_1", 0.0)))
-        score = round(pos - neg, 3)
-        label = max((("positive", pos), ("neutral", neu), ("negative", neg)),
-                    key=lambda x: x[1])[0]
-        return {"label": label, "score": score,
-                "pos": round(pos, 3), "neg": round(neg, 3), "scorer": "indobert"}
-
-    def score(self, text: str) -> dict:
-        out = self.pipe(strip_html(text) or "-", top_k=None,
-                        truncation=True, max_length=self.max_length)
-        if out and isinstance(out[0], list):       # kadang dibungkus 1 lapis
-            out = out[0]
-        return self._to_signed(out)
-
-    def score_many(self, texts):
-        clean = [strip_html(t) or "-" for t in texts]
-        res = self.pipe(clean, batch_size=self.batch_size, top_k=None,
-                        truncation=True, max_length=self.max_length)
-        return [self._to_signed(r if isinstance(r, list) else [r]) for r in res]
-
-
-def get_scorer(name: str = "lexicon", **kw) -> SentimentScorer:
-    """Pilih scorer by name. 'lexicon' (default, ringan) atau 'indobert' (NLP, dep berat)."""
-    key = (name or "lexicon").lower()
-    if key in ("indobert", "bert", "nlp", "roberta"):
-        return IndoBertScorer(**kw)
-    if key == "lexicon":
-        return LexiconScorer(**kw)
-    raise ValueError(f"scorer tak dikenal: {name!r} (pilih: lexicon / indobert)")

@@ -1,26 +1,18 @@
-"""Jurnal trading REAL (Fase 5) — catat entry/exit manual, hitung P/L, bandingin
-sama sinyal & keputusan sistem.
+"""Jurnal trading REAL — catat beli/jual yang udah dieksekusi di broker, hitung P/L.
 
-BUKAN eksekusi order & BUKAN nasihat beli/jual — cuma PENCATAT + evaluator disiplin
-(apakah kamu ngikutin sinyal? nahan stop? konsisten?).
-
-IDX: 1 lot = 100 lembar. P/L KOTOR = literal (lot*100*(exit-entry)); 'net%' pakai
-model biaya sistem (net_return) biar apple-to-apple sama paper trading & backtest.
+BUKAN eksekusi order & BUKAN nasihat — cuma pencatat + evaluator disiplin (nahan stop? konsisten?).
+IDX: 1 lot = 100 lembar. P/L KOTOR = literal (lot*100*(jual-beli)); 'net%' pakai model biaya
+backtest (net_return) biar apple-to-apple sama paper trading & backtest.
 """
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
 from .backtest import BTParams, net_return
+from .db import norm_ticker
+from .risk import LOT, trailing_stop_level
 
-LOT = 100          # 1 lot IDX = 100 lembar
 _BT = BTParams()   # model biaya default (fee beli 0.15%, jual 0.25%, slippage 0.10%/sisi)
-
-
-def norm_ticker(t: str) -> str:
-    """'bbca' / 'BBCA' -> 'BBCA.JK'. Yang udah ada '.' dibiarin."""
-    t = (t or "").strip().upper()
-    return t if "." in t else t + ".JK"
 
 
 def add_trade(conn, ticker, entry, lot, entry_date=None, stop=None, target=None,
@@ -56,7 +48,7 @@ def delete_trade(conn, trade_id) -> int:
 def pl(row, current=None) -> dict:
     """Hitung P/L satu trade. row: dict journal. current: harga sekarang (buat open trade).
 
-    Balikin: px (harga penutup/ sekarang), gross_pct, net_pct (setelah biaya),
+    Balikin: px (harga jual / sekarang), gross_pct, net_pct (setelah biaya),
     pl_rp (literal Rupiah), value (nilai posisi), shares, closed.
     """
     entry = float(row["entry"])
@@ -94,6 +86,29 @@ def summary(rows, price_of=None) -> dict:
             "closed": closed, "open": openn, "wins": wins,
             "win_rate": wins / closed if closed else 0.0,
             "avg_ret": sum(rets) / len(rets) if rets else 0.0}
+
+
+def report(conn) -> dict:
+    """Isi jurnal lengkap: tiap trade + P/L, posisi terbuka dinilai pakai close terakhir
+    + garis jual trailing. Urutan: yang terbuka dulu, lalu terbaru. conn: row_factory Row."""
+    rows = [dict(r) for r in conn.execute(
+        "SELECT * FROM journal "
+        "ORDER BY status='closed', COALESCE(exit_date, entry_date) DESC, id DESC")]
+    px: dict[str, float] = {}
+    px_date: dict[str, str] = {}
+    trail: dict[int, float | None] = {}
+    for r in rows:
+        if r["status"] != "open":
+            continue
+        if r["ticker"] not in px:
+            last = conn.execute("SELECT close, date FROM prices WHERE ticker=? ORDER BY date DESC LIMIT 1",
+                                (r["ticker"],)).fetchone()
+            if last:
+                px[r["ticker"]], px_date[r["ticker"]] = last["close"], last["date"]
+        trail[r["id"]] = trailing_stop_level(conn, r["ticker"], r["entry_date"], r["stop"])["trail"]
+    trades = [{**r, **pl(r, px.get(r["ticker"])),
+               "px_date": px_date.get(r["ticker"]), "trail": trail.get(r["id"])} for r in rows]
+    return {"trades": trades, "summary": summary(rows, px)}
 
 
 def _f(v):

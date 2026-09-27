@@ -1,6 +1,7 @@
-"""SQLite storage layer: skema + helper simpan data."""
+"""SQLite (data/trade.db): skema + helper simpan data."""
 from __future__ import annotations
 
+import pathlib
 import re
 import sqlite3
 from datetime import datetime, timezone
@@ -120,70 +121,32 @@ CREATE INDEX IF NOT EXISTS idx_news_ticker_pub    ON news   (ticker, published);
 """
 
 
-def get_connection(db_path=None) -> sqlite3.Connection:
-    """Buka koneksi SQLite (bikin folder data/ dulu kalau perlu)."""
-    ensure_dirs()
-    conn = sqlite3.connect(str(db_path or DB_PATH))
+def get_connection(db_path=None, readonly: bool = False) -> sqlite3.Connection:
+    """Buka koneksi SQLite (baris = dict-like). readonly=True buat endpoint yang cuma baca."""
+    path = pathlib.Path(db_path or DB_PATH).resolve()
+    if readonly:
+        conn = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)
+    else:
+        ensure_dirs()
+        conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def init_db(conn: sqlite3.Connection) -> None:
-    """Bikin tabel-tabel kalau belum ada, + migrasi kolom baru."""
+    """Bikin tabel-tabel kalau belum ada."""
     conn.executescript(SCHEMA)
-    _migrate(conn)
     conn.commit()
 
 
-def _migrate(conn: sqlite3.Connection) -> None:
-    """Tambah kolom yang belum ada di DB lama (biar gak perlu hapus DB)."""
-    _add_columns(conn, "instruments", {"exchange": "TEXT", "board": "TEXT"})
-    _add_columns(conn, "news",
-                 {"sent_label": "TEXT", "sent_score": "REAL", "sent_scorer": "TEXT",
-                  "title_key": "TEXT"})
-
-
-def _add_columns(conn: sqlite3.Connection, table: str, cols: dict) -> None:
-    have = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
-    for name, typ in cols.items():
-        if name not in have:
-            conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {typ}")
+def norm_ticker(t: str) -> str:
+    """'bbca' / 'BBCA' -> 'BBCA.JK' (format ticker di DB). Yang udah ada '.' dibiarin."""
+    t = (t or "").strip().upper()
+    return t if "." in t else t + ".JK"
 
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
-
-
-def upsert_instrument(conn, ticker: str, name: str, market: str) -> None:
-    conn.execute(
-        "INSERT INTO instruments (ticker, name, market, updated) VALUES (?, ?, ?, ?) "
-        "ON CONFLICT(ticker) DO UPDATE SET "
-        "name=excluded.name, market=excluded.market, updated=excluded.updated",
-        (ticker, name, market, _now_iso()),
-    )
-    conn.commit()
-
-
-def upsert_instruments_bulk(conn, items: Iterable[dict]) -> int:
-    """Simpan/update banyak instrumen sekaligus (buat universe ribuan saham)."""
-    now = _now_iso()
-    rows = [
-        (it["ticker"], it.get("name"), it.get("market"),
-         it.get("exchange"), it.get("board"), now)
-        for it in items
-    ]
-    if not rows:
-        return 0
-    conn.executemany(
-        "INSERT INTO instruments (ticker, name, market, exchange, board, updated) "
-        "VALUES (?, ?, ?, ?, ?, ?) "
-        "ON CONFLICT(ticker) DO UPDATE SET "
-        "name=excluded.name, market=excluded.market, exchange=excluded.exchange, "
-        "board=excluded.board, updated=excluded.updated",
-        rows,
-    )
-    conn.commit()
-    return len(rows)
 
 
 def upsert_prices(conn, ticker: str, rows: Iterable[tuple]) -> int:
@@ -273,17 +236,6 @@ def get_or_init_paper_state(conn, inception_date: str, start_capital: float):
     return conn.execute("SELECT * FROM paper_state WHERE id = 1").fetchone()
 
 
-def backfill_title_keys(conn) -> int:
-    """Isi title_key buat baris lama yang masih kosong (sekali jalan)."""
-    rows = conn.execute("SELECT id, title FROM news WHERE title_key IS NULL").fetchall()
-    ups = [(title_key(r["title"]), r["id"]) for r in rows]
-    ups = [(k, i) for k, i in ups if k]
-    if ups:
-        conn.executemany("UPDATE news SET title_key = ? WHERE id = ?", ups)
-        conn.commit()
-    return len(ups)
-
-
 def replace_focus_list(conn, items) -> int:
     """Ganti total isi focus_list dengan hasil screener terbaru (items sudah terurut)."""
     now = _now_iso()
@@ -328,20 +280,6 @@ def replace_signals(conn, items) -> int:
     )
     conn.commit()
     return len(items)
-
-
-def prune_to_markets(conn, markets) -> int:
-    """Hapus SEMUA data (harga/berita/focus/sinyal/instrumen) buat pasar di luar `markets`.
-    Return jumlah instrumen yang dibuang. Reversible: tinggal load_universe + backfill lagi."""
-    ph = ",".join("?" * len(markets))
-    drop = f"(SELECT ticker FROM instruments WHERE market NOT IN ({ph}))"
-    conn.execute(f"DELETE FROM prices WHERE ticker IN {drop}", markets)
-    conn.execute(f"DELETE FROM news   WHERE ticker IN {drop}", markets)
-    conn.execute(f"DELETE FROM focus_list WHERE market NOT IN ({ph})", markets)
-    conn.execute(f"DELETE FROM signals    WHERE market NOT IN ({ph})", markets)
-    cur = conn.execute(f"DELETE FROM instruments WHERE market NOT IN ({ph})", markets)
-    conn.commit()
-    return cur.rowcount
 
 
 def upsert_macro(conn, ticker: str, rows) -> int:

@@ -1,14 +1,13 @@
-"""llm.py — lapisan LLM BONGKAR-PASANG: DeepSeek, Gemini, OpenAI (dipilih Bapak, sisanya dihapus Sep 2026).
+"""llm.py — lapisan LLM BONGKAR-PASANG: DeepSeek, Gemini, OpenAI (dipilih Bapak Sep 2026).
 
 Dua bentuk API:
   - "gemini"          : Google Generative Language REST
   - OpenAI-compatible : /chat/completions  (DeepSeek, OpenAI)
 
-Config dibaca dari env (diisi lewat .env / menu dashboard / app):
-  LLM_PROVIDER      deepseek | gemini | openai
-  LLM_MODEL         nama model
-  LLM_KEY_<PROV>    API key per provider (LLM_API_KEY = key provider aktif; gemini boleh GEMINI_API_KEY)
-  LLM_BASE_URL      override base URL (opsional, biasanya kosong)
+Config di .env (diisi dari menu Pengaturan app lewat backend):
+  LLM_PROVIDER        deepseek | gemini | openai
+  LLM_MODEL           nama model
+  LLM_KEY_<PROVIDER>  API key per provider (mis. LLM_KEY_DEEPSEEK) — ganti provider gak perlu ngetik ulang
 """
 from __future__ import annotations
 
@@ -17,36 +16,54 @@ import time
 
 import requests
 
-# preset tiap provider: label, OpenAI-compatible?, base URL, tempat ambil key, contoh model
+from .config import read_env, write_env
+
+# preset tiap provider: label, OpenAI-compatible?, base URL, model bawaan (rekomendasi dulu)
 PROVIDERS: dict[str, dict] = {
+    # deepseek-chat/-reasoner DIPENSIUNKAN 24 Jul 2026 (api-docs.deepseek.com)
     "deepseek": {"label": "DeepSeek", "openai": True, "base": "https://api.deepseek.com",
-                 # deepseek-chat/-reasoner DIPENSIUNKAN 24 Jul 2026 (api-docs.deepseek.com)
-                 "key_url": "platform.deepseek.com", "models": ["deepseek-flash", "deepseek-v4-pro"]},
+                 "models": ["deepseek-flash", "deepseek-v4-pro"]},
+    # per Sep 2026 (ai.google.dev/gemini-api/docs/models): Google nyaranin 3.8 Flash / 3.5 Flash-Lite
     "gemini": {"label": "Google Gemini", "openai": False,
                "base": "https://generativelanguage.googleapis.com/v1beta",
-               "key_url": "aistudio.google.com/apikey",
-               # per Sep 2026 (ai.google.dev/gemini-api/docs/models): Google nyaranin 3.8 Flash / 3.5 Flash-Lite
                "models": ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.5-flash",
                           "gemini-flash-latest"]},
+    # per Sep 2026 (developers.openai.com/api/docs/pricing) — yang murah dulu
     "openai": {"label": "OpenAI", "openai": True, "base": "https://api.openai.com/v1",
-               # per Sep 2026 (developers.openai.com/api/docs/pricing) — yang murah dulu
-               "key_url": "platform.openai.com/api-keys",
                "models": ["gpt-6-luna", "gpt-5.6-luna", "gpt-5-mini", "gpt-6-sol", "gpt-5.6-terra"]},
 }
 
 
-def resolve(env: dict) -> dict:
-    """Config efektif dari env -> {provider, openai, base, key, model, label}."""
+def key_var(provider: str) -> str:
+    """Nama variabel .env buat API key 1 provider: deepseek -> LLM_KEY_DEEPSEEK."""
+    return f"LLM_KEY_{provider.upper()}"
+
+
+def resolve(env) -> dict:
+    """Config efektif dari env (dict / os.environ) -> {provider, openai, base, key, model, label}."""
     provider = (env.get("LLM_PROVIDER") or "gemini").strip().lower()
     p = PROVIDERS.get(provider, PROVIDERS["gemini"])
-    # key per provider (LLM_KEY_DEEPSEEK dst) -> fallback key aktif lama (LLM_API_KEY)
-    key = (env.get(f"LLM_KEY_{provider.upper()}") or env.get("LLM_API_KEY") or "").strip()
-    if not key and provider == "gemini":
-        key = (env.get("GEMINI_API_KEY") or "").strip()      # backward-compat
-    model = (env.get("LLM_MODEL") or "").strip() or (p["models"][0] if p["models"] else "")
-    base = (env.get("LLM_BASE_URL") or "").strip() or p["base"]
-    return {"provider": provider, "openai": p["openai"], "base": base,
-            "key": key, "model": model, "label": p["label"]}
+    return {"provider": provider, "openai": p["openai"], "base": p["base"],
+            "key": (env.get(key_var(provider)) or "").strip(),
+            "model": (env.get("LLM_MODEL") or "").strip() or p["models"][0], "label": p["label"]}
+
+
+def migrate_env() -> None:
+    """Rapikan .env format lama (aman dipanggil berkali-kali; gak ngapa-ngapain kalau udah rapi).
+    Dulu key provider aktif ada di LLM_API_KEY (Gemini lama: GEMINI_API_KEY) + ada LLM_BASE_URL.
+    Sekarang semua key di LLM_KEY_<PROVIDER>; variabel lama dibuang setelah key-nya dipindah."""
+    env = read_env()
+    upd: dict[str, str | None] = {}
+    active = (env.get("LLM_PROVIDER") or "").strip().lower()
+    if env.get("LLM_API_KEY") and active in PROVIDERS and not env.get(key_var(active)):
+        upd[key_var(active)] = env["LLM_API_KEY"]
+    if env.get("GEMINI_API_KEY") and not env.get(key_var("gemini")) and key_var("gemini") not in upd:
+        upd[key_var("gemini")] = env["GEMINI_API_KEY"]
+    for old in ("LLM_API_KEY", "GEMINI_API_KEY", "LLM_BASE_URL"):
+        if old in env:
+            upd[old] = None
+    if upd:
+        write_env(upd)
 
 
 def _post(url: str, headers: dict, body: dict, tries: int = 4) -> requests.Response:
@@ -61,11 +78,11 @@ def _post(url: str, headers: dict, body: dict, tries: int = 4) -> requests.Respo
 
 
 # ------------------------------------------------------------------ generate
-def generate(prompt: str, env: dict, temperature: float = 0.25, max_tokens: int = 16384) -> str:
+def generate(prompt: str, env, temperature: float = 0.25, max_tokens: int = 16384) -> str:
     """Panggil LLM aktif, minta JSON. Balikin teks mentah (di-parse pemanggil)."""
     c = resolve(env)
     if not c["key"]:
-        raise RuntimeError(f"API key kosong buat provider '{c['provider']}'. Isi LLM_API_KEY di .env / menu.")
+        raise RuntimeError(f"API key {c['label']} kosong. Isi di menu Pengaturan app.")
     if c["openai"]:
         return _gen_openai(prompt, c, temperature, max_tokens)
     return _gen_gemini(prompt, c, temperature, max_tokens)
@@ -103,7 +120,7 @@ def _gen_openai(prompt, c, temperature, max_tokens) -> str:
     return (r.json().get("choices") or [{}])[0].get("message", {}).get("content", "") or ""
 
 
-# ------------------------------------------------------------------ utilitas menu
+# ------------------------------------------------------------------ menu Pengaturan app
 # model non-chat (suara/gambar/embedding/dll) gak relevan buat analisa -> dibuang dari daftar
 _NON_CHAT = ("embed", "tts", "whisper", "audio", "realtime", "transcribe", "image", "moderation", "guard",
              "search", "aqa", "imagen", "veo", "live", "robotics", "computer-use", "dall-e", "davinci",
@@ -125,6 +142,7 @@ def chat_models(provider: str, names: list[str]) -> list[str]:
 
 
 def list_models(env: dict) -> list[str]:
+    """Daftar model chat ASLI dari provider (pakai key). Gagal -> list kosong."""
     c = resolve(env)
     try:
         if c["openai"]:
@@ -173,10 +191,10 @@ def balance_usd(env: dict) -> float | None:
 
 
 def test_connection(env: dict) -> tuple[bool, str]:
-    """Ping kecil: balikin (ok, pesan) buat tombol 'Tes' di menu."""
+    """Ping kecil (LLM beneran nulis, makan token dikit): (ok, pesan) buat tombol Cek di app."""
     c = resolve(env)
     try:
-        txt = generate("Balas satu kata JSON: {\"ok\":true}", env, max_tokens=20)
+        generate("Balas satu kata JSON: {\"ok\":true}", env, max_tokens=20)
         return True, f"OK — {c['label']} / {c['model']} nyambung."
     except Exception as e:
         return False, f"GAGAL — {str(e)[:200]}"

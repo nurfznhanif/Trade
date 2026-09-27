@@ -65,7 +65,7 @@ def allocate(capital: float, calls: list[dict], risk_pct: float = 0.02, max_pct:
     cands.sort(key=lambda x: x[:3])
 
     cash, picks, skipped = float(capital), [], []
-    for _, spek, neg_rr, c in cands:
+    for _, spek, _, c in cands:
         e, s = float(c["entry"]), float(c["stop"])
         per_lot = e * lot * (1 + fee)
         if len(picks) >= max_pos:
@@ -73,12 +73,11 @@ def allocate(capital: float, calls: list[dict], risk_pct: float = 0.02, max_pct:
             continue
         r = risk_pct / 2 if spek else risk_pct
         lots = min(int(capital * r // ((e - s) * lot)), int(capital * max_pct // per_lot))
-        note = ""
         if per_lot > capital * max_pct:
             skipped.append({"ticker": c["ticker"], "why": f"1 lot > {max_pct:.0%} modal"})
             continue
         if lots == 0 and per_lot <= cash:
-            lots, note = 1, "minimal 1 lot"
+            lots = 1                                     # modal kecil: minimal 1 lot
         lots = min(lots, int(cash // per_lot))
         if lots <= 0:
             skipped.append({"ticker": c["ticker"], "why": "modal sisa gak cukup"})
@@ -89,12 +88,10 @@ def allocate(capital: float, calls: list[dict], risk_pct: float = 0.02, max_pct:
         cost = lots * per_lot
         cash -= cost
         t = c.get("target")
-        picks.append({"ticker": c["ticker"], "action": c.get("action"), "conviction": c.get("conviction"),
-                      "lot": lots, "entry": e, "stop": s, "target": t,
+        picks.append({"ticker": c["ticker"], "lot": lots, "entry": e, "stop": s, "target": t,
                       "value": round(cost), "pct": cost / capital,
-                      "risk_rp": round(lots * lot * (e - s)),                                   # rugi kalau kena stop
-                      "reward_rp": round(lots * lot * (t - e)) if t and t > e else 0,           # untung kalau sampai target
-                      "rr": round(-neg_rr, 2), "note": note})
+                      "risk_rp": round(lots * lot * (e - s)),                            # rugi kalau kena stop
+                      "reward_rp": round(lots * lot * (t - e)) if t and t > e else 0})   # untung kalau sampai target
     risk_total = sum(p["risk_rp"] for p in picks)
     reward_total = sum(p["reward_rp"] for p in picks)
     return {"modal": capital, "used": round(capital - cash), "cash": round(cash),

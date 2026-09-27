@@ -1,27 +1,9 @@
-"""Jalanin screener -> simpan focus_list -> tampilin hasilnya."""
-import pathlib
-import sys
+"""Screener likuiditas -> focus_list (saham yang dipantau tiap hari). Jalanin sesekali (mis. bulanan),
+SETELAH harga semua saham di-update: `python scripts/backfill_prices.py --refresh --period 1mo`."""
+import _bootstrap  # noqa: F401  (path repo + UTF-8)
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-try:
-    sys.stdout.reconfigure(encoding="utf-8")
-except Exception:
-    pass
-
-from trade.db import get_connection, init_db, replace_focus_list   # noqa: E402
-from trade.screener import ScreenParams, screen                    # noqa: E402
-
-
-def fmt_price(v, market):
-    if v is None:
-        return "-"
-    return f"${v:,.2f}" if market == "US" else f"Rp{v:,.0f}"
-
-
-def fmt_turnover(v, market):
-    if v is None:
-        return "-"
-    return f"${v/1e6:,.1f}jt" if market == "US" else f"Rp{v/1e9:,.1f}M"
+from trade.db import get_connection, init_db, replace_focus_list
+from trade.screener import ScreenParams, screen
 
 
 def main():
@@ -32,8 +14,6 @@ def main():
     passed = screen(conn, p)
     n = replace_focus_list(conn, passed)
 
-    us = [x for x in passed if x["market"] == "US"]
-    idx = [x for x in passed if x["market"] == "IDX"]
     universe = conn.execute("SELECT COUNT(*) FROM instruments").fetchone()[0]
     with_px = conn.execute("SELECT COUNT(DISTINCT ticker) FROM prices").fetchone()[0]
 
@@ -42,21 +22,18 @@ def main():
     print("=" * 66)
     print(f"  Universe          : {universe}")
     print(f"  Punya data harga  : {with_px}")
-    print(f"  ✅ LOLOS focus list: {n}   (US {len(us)}, IDX {len(idx)})")
-    print(f"\n  Kriteria:")
-    print(f"    US : harga ≥ ${p.us_min_price:.0f}  &  turnover ≥ ${p.us_min_turnover/1e6:.0f}jt/hari")
-    print(f"    IDX: harga ≥ Rp{p.idx_min_price:.0f} &  turnover ≥ Rp{p.idx_min_turnover/1e9:.0f}M/hari  (skip papan {p.idx_skip_boards[0]})")
+    print(f"  LOLOS focus list  : {n}")
+    print("\n  Kriteria:")
+    print(f"    harga >= Rp{p.min_price:.0f} & turnover >= Rp{p.min_turnover/1e9:.0f}M/hari "
+          f"(skip papan {', '.join(p.skip_boards)})")
     print(f"    (rata2 {p.lookback} hari terakhir, minimal {p.min_ndays} hari data)")
 
-    for label, lst in [("US 🇺🇸", us), ("IDX 🇮🇩", idx)]:
-        if not lst:
-            continue
-        print(f"\n  ── TOP 15 {label} (paling likuid) ──")
-        for x in lst[:15]:
-            print(f"    {x['ticker']:11s} {fmt_price(x['last_close'], x['market']):>11} "
-                  f"{fmt_turnover(x['avg_turnover'], x['market']):>11}  {(x['name'] or '')[:32]}")
+    print("\n  -- TOP 15 (paling likuid) --")
+    for x in passed[:15]:
+        px, turn = f"Rp{x['last_close']:,.0f}", f"Rp{x['avg_turnover'] / 1e9:,.1f}M"
+        print(f"    {x['ticker']:11s} {px:>11} {turn:>11}  {(x['name'] or '')[:32]}")
 
-    print("\n💾 focus_list tersimpan → ini yang bakal ditarik berita + sentimen (Fase 1).")
+    print("\nfocus_list tersimpan -> saham ini yang ditarik berita + sinyalnya tiap hari.")
 
 
 if __name__ == "__main__":

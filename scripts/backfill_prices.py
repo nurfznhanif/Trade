@@ -1,66 +1,46 @@
-"""Backfill / update harga buat SEMUA saham di universe.
+"""Tarik / update harga harian saham IDX (yfinance) ke DB.
 
-Aman: batch + jeda + RESUMABLE (kalau mati di tengah, jalanin lagi -> lanjut, gak ngulang).
+Aman: batch + jeda + RESUMABLE (mati di tengah? jalanin lagi -> lanjut, gak ngulang).
 
-Contoh:
-  python scripts/backfill_prices.py --limit 40           # tes kecil dulu
-  python scripts/backfill_prices.py --market IDX         # IDX aja (~962)
-  python scripts/backfill_prices.py                       # backfill penuh (~7900, lama)
-  python scripts/backfill_prices.py --refresh --period 5d # update harian semua saham
+  python scripts/backfill_prices.py --focus --refresh --period 1mo   # update harian (dipakai daily.py)
+  python scripts/backfill_prices.py --refresh --period 1mo           # update SEMUA saham (sebelum screen.py)
+  python scripts/backfill_prices.py --limit 40                        # tes kecil
 """
+import _bootstrap  # noqa: F401  (path repo + UTF-8)
+
 import argparse
 import logging
-import pathlib
-import sys
 import time
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-try:
-    sys.stdout.reconfigure(encoding="utf-8")
-except Exception:
-    pass
+from trade.db import get_connection, init_db, upsert_prices
+from trade.prices import fetch_prices_batch
 
-# Bungkam log "No data found / delisted" dari yfinance (bakal banyak di universe segede ini)
+# Bungkam log "No data found / delisted" dari yfinance (bakal banyak kalau narik semua saham)
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
-
-from trade.db import get_connection, init_db, upsert_prices   # noqa: E402
-from trade.prices import fetch_prices_batch                    # noqa: E402
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--period", default="6mo", help="rentang histori (6mo, 1y, 2y, ...)")
+    ap.add_argument("--period", default="6mo", help="rentang histori (1mo, 6mo, 1y, 2y, ...)")
     ap.add_argument("--batch", type=int, default=120, help="saham per batch")
     ap.add_argument("--sleep", type=float, default=1.0, help="jeda antar batch (detik)")
-    ap.add_argument("--market", choices=["US", "IDX"], help="batasi ke satu pasar")
     ap.add_argument("--limit", type=int, help="ambil N saham pertama (buat tes)")
     ap.add_argument("--refresh", action="store_true",
-                    help="fetch ulang semua (update). Tanpa ini: skip yang udah ada data.")
-    ap.add_argument("--focus", action="store_true",
-                    help="cuma saham di focus_list (bukan seluruh universe)")
+                    help="tarik ulang semua (update). Tanpa ini: skip yang udah ada datanya.")
+    ap.add_argument("--focus", action="store_true", help="cuma saham di focus_list (bukan semua saham)")
     args = ap.parse_args()
 
     conn = get_connection()
     init_db(conn)
 
-    q = "SELECT ticker FROM focus_list" if args.focus else "SELECT ticker FROM instruments"
-    params: list = []
-    if args.market:
-        q += " WHERE market = ?"
-        params.append(args.market)
-    q += " ORDER BY ticker"
-    all_tickers = [r[0] for r in conn.execute(q, params)]
-
-    have = set()
-    if not args.refresh:
-        have = {r[0] for r in conn.execute("SELECT DISTINCT ticker FROM prices")}
-    todo = [t for t in all_tickers if t not in have]
-    if args.limit:
-        todo = todo[:args.limit]
+    table = "focus_list" if args.focus else "instruments"
+    all_tickers = [r[0] for r in conn.execute(f"SELECT ticker FROM {table} ORDER BY ticker")]
+    have = set() if args.refresh else {r[0] for r in conn.execute("SELECT DISTINCT ticker FROM prices")}
+    todo = [t for t in all_tickers if t not in have][:args.limit]
 
     total = len(todo)
     mode = ", mode REFRESH" if args.refresh else ""
-    print(f"🎯 Target: {total} saham (dari {len(all_tickers)} total{mode}). "
+    print(f"Target: {total} saham (dari {len(all_tickers)} total{mode}). "
           f"Batch {args.batch}, jeda {args.sleep}s, periode {args.period}.\n", flush=True)
     if total == 0:
         print("Semua target udah ada datanya. Pakai --refresh buat update.", flush=True)
@@ -68,7 +48,7 @@ def main():
 
     nbatch = (total + args.batch - 1) // args.batch
     t_start = time.time()
-    ok = fail = rows_total = 0
+    ok = fail = 0
 
     for i in range(0, total, args.batch):
         batch = todo[i:i + args.batch]
@@ -90,7 +70,6 @@ def main():
                 ok += 1
             else:
                 fail += 1
-        rows_total += b_rows
 
         elapsed = time.time() - t_start
         done = min(i + args.batch, total)
@@ -102,7 +81,7 @@ def main():
 
     dt = time.time() - t_start
     grand = conn.execute("SELECT COUNT(*) FROM prices").fetchone()[0]
-    print(f"\n✅ Selesai {dt/60:.1f} menit. Sukses {ok}, gagal/kosong {fail}. "
+    print(f"\nSelesai {dt/60:.1f} menit. Sukses {ok}, gagal/kosong {fail}. "
           f"Total baris harga di DB: {grand}", flush=True)
 
 

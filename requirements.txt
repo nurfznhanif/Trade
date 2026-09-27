@@ -1,22 +1,14 @@
-# Fase 0 — data pipeline
-yfinance>=0.2.40      # harga saham (US + IDX via suffix .JK)
-feedparser>=6.0.11    # parse Google News RSS (berita, gratis tanpa API key)
-PyYAML>=6.0.1         # baca config/watchlist.yaml
-cloudscraper>=1.2.71  # nembus Cloudflare buat ambil daftar saham IDX resmi
-streamlit>=1.38       # dashboard (baca SQLite langsung)
-pandas>=2.2.0         # dependency yfinance, dipakai juga nanti buat teknikal
+# Pipeline data harian (scripts/)
+yfinance>=0.2.40      # harga saham IDX (suffix .JK), data makro, fundamental
+feedparser>=6.0.11    # berita Google News RSS (gratis tanpa API key)
+pandas>=2.2.0         # olah harga (sinyal, paper trading, backtest, brief)
 
-# Pipeline /analisa otomatis (scripts/auto_analisa.py) — baca BADAN artikel tanpa API berbayar
-requests>=2.31          # HTTP (Gemini REST + fetch artikel)
-googlenewsdecoder>=0.1.7  # decode shell Google News -> URL media asli
-trafilatura>=2.2.0      # sabut teks bersih dari halaman berita (lokal, no API)
-ddgs>=9.0               # cadangan cari URL via DuckDuckGo (keyless)
+# Baca ISI artikel berita tanpa API berbayar (trade/newsbody.py)
+requests>=2.31            # HTTP (LLM + ambil artikel)
+googlenewsdecoder>=0.1.7  # shell Google News -> URL media asli
+trafilatura>=2.2.0        # sabut teks bersih dari halaman berita
+ddgs>=9.0                 # cadangan cari URL artikel via DuckDuckGo (tanpa key)
 
-# Backend API buat app mobile (backend/api.py)
-fastapi>=0.110          # REST API
-uvicorn[standard]>=0.29 # ASGI server
-
-# (Eksperimental) scorer 'indobert' butuh torch+transformers (~GB). TAPI hasil tes Agu 2026:
-# model NLP Indonesia yang ada masih KALAH dari lexicon buat judul saham (sentimen finansial
-# != sentimen linguistik), jadi TIDAK dipakai default & sengaja tidak masuk requirement.
-# Mau eksperimen sendiri:  pip install torch transformers
+# Backend API buat app HP (backend/)
+fastapi>=0.110
+uvicorn[standard]>=0.29

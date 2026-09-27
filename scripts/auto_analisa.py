@@ -1,82 +1,39 @@
-"""auto_analisa.py — versi KODE dari /analisa.
+"""auto_analisa.py — otak analisa harian: data + ISI berita -> LLM -> data/analysis.json (dibaca app).
 
-Kumpulin data + BADAN artikel (trade/newsbody.py, lokal tanpa API), panggil LLM
-(BONGKAR-PASANG lewat trade/llm.py: Gemini/DeepSeek/OpenAI/Groq/OpenRouter/Ollama)
-buat judgment BELI/HINDARI + alasan yang WAJIB baca isi berita, lalu tulis JSON
-skema sama yang dipakai dashboard/app.
+Server jalanin ini tiap Senin-Jumat 05:00 WIB, habis scripts/daily.py (systemd trade-daily) —
+JANGAN pindah/rename file ini. Isi artikel dibaca LOKAL (trade/newsbody.py, tanpa API), jadi
+API eksternal cuma LLM. Provider + key diatur dari menu Pengaturan app (tersimpan di .env).
 
-Ini yang nanti dipanggil TOMBOL di app mobile (lewat backend).
-
-Contoh:
-  .venv/Scripts/python.exe scripts/auto_analisa.py                        # analisa penuh
-  .venv/Scripts/python.exe scripts/auto_analisa.py --modal 100jt          # + sizing lot
-  .venv/Scripts/python.exe scripts/auto_analisa.py --list-models          # daftar model provider aktif
-  .venv/Scripts/python.exe scripts/auto_analisa.py --test                 # tes koneksi LLM aktif
-  .venv/Scripts/python.exe scripts/auto_analisa.py --provider deepseek --model deepseek-chat
-  .venv/Scripts/python.exe scripts/auto_analisa.py --refresh              # tarik data baru dulu (daily.py)
-
-Provider + key diatur di .env (LLM_PROVIDER / LLM_MODEL / LLM_API_KEY / LLM_BASE_URL)
-atau lewat menu "Pengaturan LLM" di dashboard. JANGAN hardcode key.
+  python scripts/auto_analisa.py                  # analisa penuh -> data/analysis.json
+  python scripts/auto_analisa.py --test           # tes koneksi LLM aktif
+  python scripts/auto_analisa.py --list-models    # daftar model provider aktif
+  python scripts/auto_analisa.py --provider deepseek --model deepseek-v4-pro
 """
 from __future__ import annotations
 
+import _bootstrap  # noqa: F401  (path repo + UTF-8)
+
 import argparse
 import json
+import os
 import re
 import sqlite3
-import subprocess
-import sys
+from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-import requests
-
-sys.stdout.reconfigure(encoding="utf-8")  # Windows console kadang cp1252
-
-BASE = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(BASE))  # biar `import trade...` jalan pas dirun dari mana aja
-DB = BASE / "data" / "trade.db"
-BRIEF = BASE / "data" / "brief_latest.md"
-API_ROOT = "https://generativelanguage.googleapis.com/v1beta"
-
-
-# ---------------------------------------------------------------- util kecil
-def load_env() -> None:
-    """Loader .env mini (biar gak butuh python-dotenv)."""
-    f = BASE / ".env"
-    if not f.exists():
-        return
-    for line in f.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        import os
-        os.environ.setdefault(k.strip(), v.strip())
-
-
-def parse_modal(s: str | None) -> int | None:
-    """'100jt' / '1,5 juta' / '1500000' / '500rb' -> int rupiah."""
-    if not s:
-        return None
-    t = s.lower().replace(" ", "").replace(".", "").replace(",", ".")
-    mult = 1
-    if "jt" in t or "juta" in t:
-        mult = 1_000_000
-        t = t.replace("juta", "").replace("jt", "")
-    elif "rb" in t or "ribu" in t:
-        mult = 1_000
-        t = t.replace("ribu", "").replace("rb", "")
-    m = re.search(r"[\d.]+", t)
-    if not m:
-        return None
-    return int(float(m.group()) * mult)
+from trade import llm
+from trade.config import ANALYSIS_PATH, BRIEF_PATH, read_env
+from trade.db import get_connection
+from trade.indicators import rsi, sma
+from trade.journal import report
+from trade.msci import msci_status
+from trade.newsbody import bodies_for
 
 
 # ---------------------------------------------------------------- kumpulin data
 def big_cap_block(conn: sqlite3.Connection) -> str:
     """Lensa big cap: 15 saham turnover terbesar + skor mesin + berita."""
-    conn.row_factory = sqlite3.Row
     sig = {r["ticker"]: (r["score"], r["action"])
            for r in conn.execute("SELECT ticker,score,action FROM signals")}
     q = ("WITH r AS (SELECT ticker,close,volume,ROW_NUMBER() OVER "
@@ -84,7 +41,6 @@ def big_cap_block(conn: sqlite3.Connection) -> str:
          "SELECT ticker,AVG(close*volume) turn,MAX(CASE WHEN rn=1 THEN close END) last "
          "FROM r WHERE rn<=20 GROUP BY ticker ORDER BY turn DESC LIMIT 15")
     s = (datetime.now(timezone.utc) - timedelta(days=12)).isoformat()
-    from trade.indicators import sma, rsi as rsi_f
     out = ["## LENSA BIG CAP (turnover terbesar — nilai dari valuasi+berita, bukan cuma momentum)"]
     for b in conn.execute(q):
         # teknikal ringkas biar model bisa terapin aturan RSI>70 / tren
@@ -92,12 +48,12 @@ def big_cap_block(conn: sqlite3.Connection) -> str:
             "SELECT close FROM prices WHERE ticker=? ORDER BY date", (b["ticker"],))]
         tech = ""
         if len(cl) >= 50:
-            r14 = rsi_f(cl, 14)
             chg = (cl[-1] / cl[-21] - 1) * 100 if len(cl) > 21 else 0
             tren = "uptrend" if cl[-1] > sma(cl, 20) > sma(cl, 50) else (
                 "downtrend" if cl[-1] < sma(cl, 20) < sma(cl, 50) else "sideways")
-            tech = f"  RSI {r14:.0f} · {tren} · 1bln {chg:+.0f}%"
-        out.append(f"### {b['ticker']}  ~Rp{b['turn']/1e9:.1f}M/hari  last {int(b['last'])}  [mesin {sig.get(b['ticker'],'-')}]{tech}")
+            tech = f"  RSI {rsi(cl, 14):.0f} · {tren} · 1bln {chg:+.0f}%"
+        out.append(f"### {b['ticker']}  ~Rp{b['turn']/1e9:.1f}M/hari  last {int(b['last'])}  "
+                   f"[mesin {sig.get(b['ticker'], '-')}]{tech}")
         for x in conn.execute(
                 "SELECT published,title FROM news WHERE ticker=? AND title IS NOT NULL "
                 "AND (published IS NULL OR published>=?) ORDER BY published DESC LIMIT 4",
@@ -107,54 +63,35 @@ def big_cap_block(conn: sqlite3.Connection) -> str:
 
 
 def positions_block(conn: sqlite3.Connection) -> str:
-    """Posisi terbuka + trailing stop + harga terakhir (buat review TAHAN/WASPADA/JUAL)."""
-    try:
-        from trade.risk import trailing_stop_level
-    except Exception:
-        return ""
-    conn.row_factory = sqlite3.Row
-    rows = list(conn.execute(
-        "SELECT ticker,entry_date,entry,stop FROM journal WHERE status='open'"))
-    if not rows:
+    """Posisi terbuka di jurnal + garis jual trailing + harga terakhir (buat verdict TAHAN/WASPADA/JUAL)."""
+    opened = [t for t in report(conn)["trades"] if t["status"] == "open" and t["px"] is not None]
+    if not opened:
         return ""
     out = ["## POSISI TERBUKA (journal) — kasih verdict TAHAN/WASPADA/JUAL"]
-    for r in rows:
-        px = list(conn.execute(
-            "SELECT close FROM prices WHERE ticker=? ORDER BY date DESC LIMIT 1", (r["ticker"],)))
-        if not px:
-            continue
-        last = px[0]["close"]
-        d = trailing_stop_level(conn, r["ticker"], r["entry_date"], r["stop"])
-        tr = d["trail"]
-        vt = (last / tr - 1) * 100 if tr else 0
-        out.append(f"  {r['ticker']}: last {int(last)}  trail {int(tr)}  ({vt:+.1f}% di atas trail)  entry {int(r['entry'])}")
+    for t in opened:
+        tr = t["trail"]
+        above = (t["px"] / tr - 1) * 100 if tr else 0
+        out.append(f"  {t['ticker']}: last {int(t['px'])}  trail {int(tr or 0)}  "
+                   f"({above:+.1f}% di atas trail)  entry {int(t['entry'])}")
     return "\n".join(out)
 
 
 def gather_context(conn: sqlite3.Connection) -> tuple[str, str]:
-    """Balikin (blok_konteks, tanggal_data). Backbone = brief_latest.md."""
-    brief = BRIEF.read_text(encoding="utf-8") if BRIEF.exists() else "(brief tidak ada)"
+    """Balikin (blok_konteks, tanggal_data). Backbone = brief_latest.md (ditulis daily.py)."""
+    brief = BRIEF_PATH.read_text(encoding="utf-8") if BRIEF_PATH.exists() else "(brief tidak ada)"
     data_date = conn.execute("SELECT MAX(date) FROM prices").fetchone()[0]
-    top20 = [r[0] for r in conn.execute(
-        "SELECT ticker FROM signals ORDER BY score DESC LIMIT 20")]
-    from trade.msci import msci_status
-    msci = msci_status(date.today())["note"]
-
-    # baca badan artikel LOKAL (decode Google News + trafilatura, TANPA API) — top-12 kandidat
-    from trade.newsbody import bodies_for
-    body_block = bodies_for(conn, top20[:12])
-
+    top20 = [r[0] for r in conn.execute("SELECT ticker FROM signals ORDER BY score DESC LIMIT 20")]
     parts = [
         f"DATA per: {data_date} | Hari ini: {date.today().isoformat()}",
         f"TOP-20 kandidat by skor mesin: {', '.join(top20)}",
-        f"MSCI: {msci}",
+        f"MSCI: {msci_status(date.today())['note']}",
         "",
         "## BRIEF HARIAN (teknikal + fundamental + berita + regime + posisi)",
         brief,
         "",
         big_cap_block(conn),
         "",
-        body_block,
+        bodies_for(conn, top20[:12]),   # isi artikel top-12 kandidat (dibaca lokal, tanpa API)
         "",
         positions_block(conn),
     ]
@@ -166,7 +103,6 @@ SCHEMA_HINT = """
 Skema WAJIB (JSON valid, TANPA markdown/```):
 {
   "generated": "YYYY-MM-DD",
-  "engine": "Gemini (LLM) — baca data + berita",
   "regime": "RISK-ON|RISK-OFF|NETRAL",
   "macro": "cerita pasar, lihat ATURAN MACRO di bawah",
   "calls": [
@@ -227,12 +163,8 @@ Nilai ~15-20 kandidat teratas + semua big cap.
 """
 
 
-def build_prompt(context: str, modal: int | None) -> str:
-    modal_note = ""
-    if modal:
-        modal_note = (f"\nModal user Rp{modal:,} — tetap kasih entry/stop realistis; "
-                      "sizing lot dihitung kode, kamu fokus keputusan+alasan.")
-    return f"{RULES}\n{SCHEMA_HINT}{modal_note}\n\n=== DATA ===\n{context}\n\n=== OUTPUT: JSON saja ==="
+def build_prompt(context: str) -> str:
+    return f"{RULES}\n{SCHEMA_HINT}\n\n=== DATA ===\n{context}\n\n=== OUTPUT: JSON saja ==="
 
 
 def extract_json(text: str) -> dict:
@@ -246,38 +178,19 @@ def extract_json(text: str) -> dict:
     return json.loads(t[i:j + 1])
 
 
-# ---------------------------------------------------------------- sizing
-def apply_sizing(obj: dict, modal: int | None, risk: float) -> None:
-    if not modal:
-        return
-    from trade.risk import position_size
-    obj["modal"] = modal
-    for c in obj.get("calls", []):
-        act = (c.get("action") or "")
-        if act.startswith("BELI") and c.get("entry") and c.get("stop"):
-            r = risk / 2 if "spekulatif" in act.lower() else risk  # spek: setengah ukuran
-            try:
-                c["lot"] = position_size(modal, int(c["entry"]), int(c["stop"]), risk_pct=r)["lot"]
-            except Exception:
-                c["lot"] = 0
-
-
 # ---------------------------------------------------------------- main
 def main() -> None:
-    load_env()
-    import os
-    from trade import llm
     ap = argparse.ArgumentParser()
-    ap.add_argument("--modal", help="mis. 100jt / 1500000 / 1,5juta")
-    ap.add_argument("--risk", type=float, default=0.02, help="risiko per trade (default 0.02)")
-    ap.add_argument("--out", default=str(BASE / "data" / "analysis_gemini.json"))
+    ap.add_argument("--out", default=str(ANALYSIS_PATH))
     ap.add_argument("--provider", help="override LLM_PROVIDER (deepseek/gemini/openai)")
     ap.add_argument("--model", help="override LLM_MODEL")
-    ap.add_argument("--refresh", action="store_true", help="jalanin daily.py dulu")
     ap.add_argument("--list-models", action="store_true", help="daftar model provider aktif")
     ap.add_argument("--test", action="store_true", help="tes koneksi LLM aktif")
     args = ap.parse_args()
 
+    llm.migrate_env()
+    for k, v in read_env().items():      # variabel environment yang udah ada tetap menang
+        os.environ.setdefault(k, v)
     if args.provider:
         os.environ["LLM_PROVIDER"] = args.provider
     if args.model:
@@ -289,38 +202,23 @@ def main() -> None:
         for m in llm.list_models(os.environ):
             print("  -", m)
         return
-
     if args.test:
-        ok, msg = llm.test_connection(os.environ)
-        print(msg)
+        print(llm.test_connection(os.environ)[1])
         return
 
-    if args.refresh:
-        print("refresh data (daily.py)…")
-        subprocess.run([sys.executable, str(BASE / "scripts" / "daily.py")], check=False)
-
-    conn = sqlite3.connect(DB)
-    context, data_date = gather_context(conn)
-    modal = parse_modal(args.modal)
-    print(f"• data per {data_date} | LLM {cfg['label']} / {cfg['model']}"
-          + (f" | modal Rp{modal:,}" if modal else ""))
-
-    prompt = build_prompt(context, modal)
-    print(f"• context ~{len(context)} char, manggil LLM…")
-    text = llm.generate(prompt, os.environ)
-    obj = extract_json(text)
+    context, data_date = gather_context(get_connection())
+    print(f"- data per {data_date} | LLM {cfg['label']} / {cfg['model']}")
+    print(f"- context ~{len(context)} char, manggil LLM...", flush=True)
+    obj = extract_json(llm.generate(build_prompt(context), os.environ))
 
     obj.setdefault("generated", date.today().isoformat())
-    obj["generated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")   # jam analisa (app: "pukul HH.MM WIB")
-    apply_sizing(obj, modal, args.risk)
-
+    obj["generated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")   # app: "pukul HH.MM WIB"
+    obj["engine"] = f"{cfg['label']} / {cfg['model']}"
     Path(args.out).write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
 
     calls = obj.get("calls", [])
-    from collections import Counter
-    dist = Counter(c.get("action", "?") for c in calls)
-    print(f"✓ {len(calls)} calls -> {args.out}")
-    for k, v in sorted(dist.items()):
+    print(f"OK {len(calls)} calls -> {args.out}")
+    for k, v in sorted(Counter(c.get("action", "?") for c in calls).items()):
         print(f"    {k}: {v}")
     if obj.get("positions"):
         print(f"    positions: {len(obj['positions'])}")

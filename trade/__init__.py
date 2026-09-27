@@ -1,7 +1,4 @@
-"""Trade — project analisis saham berbasis harga + berita/sentimen.
+"""trade — inti Python Trade IDX: data (harga, berita, makro, fundamental), sinyal, risiko, jurnal, LLM.
 
-Fase 0: data pipeline (harga & berita -> SQLite).
-Struktur dibikin market-agnostic (US + IDX) supaya gampang ditambah pasar lain.
+Dipakai backend/ (API buat app HP) dan scripts/ (pipeline harian + alat riset).
 """
-
-__version__ = "0.1.0"

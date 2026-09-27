@@ -1,7 +1,4 @@
-"""Tarik harga historis via yfinance.
-
-Jalan buat US (ticker biasa: AAPL) maupun IDX (pakai suffix .JK: BBCA.JK).
-"""
+"""Tarik harga historis saham IDX via yfinance (ticker pakai suffix .JK, mis. BBCA.JK)."""
 from __future__ import annotations
 
 import yfinance as yf
