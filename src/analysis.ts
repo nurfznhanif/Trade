@@ -1,18 +1,18 @@
-// Tipe data + helper buat baca analysis.json (skema yang ditulis auto_analisa.py).
-// Untuk rangka ini kita pakai data SAMPEL bundel; nanti diganti fetch ke backend.
+// Tipe data analysis.json (ditulis scripts/auto_analisa.py) + helper warna & kelompok aksi.
 import sample from "../assets/analysis.sample.json";
+import { C } from "./theme";
 
 export type Flag = "good" | "neutral" | "caution" | "danger";
 
 export interface Call {
   ticker: string;
-  action: string;
+  action: string; // BELI / BELI (tenang) / BELI (spekulatif) / TUNGGU PULLBACK / HINDARI
   conviction?: string;
   flag?: Flag;
   entry: number | null;
   target: number | null;
   stop: number | null;
-  lot?: number;
+  lot?: number; // cuma ada di analisa lama yang pakai modal
   reason: string;
 }
 
@@ -33,74 +33,42 @@ export interface Analysis {
   positions?: Position[];
 }
 
+// data contoh yang tampil sebelum server ketemu
 export const sampleAnalysis = sample as unknown as Analysis;
 
-// ---- helper tampilan ----
-export const flagColor: Record<string, string> = {
-  good: "#22c55e",
-  neutral: "#38bdf8",
-  caution: "#f59e0b",
-  danger: "#ef4444",
-};
+export type Group = "beli" | "tunggu" | "hindari";
 
-export function actionColor(action: string): string {
-  if (action.startsWith("BELI")) return "#22c55e";
-  if (action.startsWith("HINDARI")) return "#ef4444";
-  return "#f59e0b"; // TUNGGU PULLBACK
-}
-
-export function verdictColor(v: string): string {
-  if (v === "JUAL") return "#ef4444";
-  if (v === "WASPADA") return "#f59e0b";
-  return "#22c55e"; // TAHAN
-}
-
-// warna sentimen berita: + hijau, - merah, ~0 netral (biru)
-export function sentColor(score: number | null | undefined): string {
-  if (score == null) return "#7d8792";
-  if (score > 0.15) return "#22c55e";
-  if (score < -0.15) return "#ef4444";
-  return "#38bdf8";
-}
-
-// warna aksi sinyal mesin (BUY/HOLD/SELL)
-export function sigColor(action: string): string {
-  const a = action.toUpperCase();
-  if (a.includes("BUY") || a.includes("BELI")) return "#22c55e";
-  if (a.includes("SELL") || a.includes("HINDARI") || a.includes("AVOID")) return "#ef4444";
-  return "#f59e0b"; // HOLD
-}
-
-// kelompok tab
-export function group(action: string): "beli" | "tunggu" | "hindari" {
+// kelompok tab Beli / Tunggu / Hindari
+export function group(action: string): Group {
   if (action.startsWith("BELI")) return "beli";
   if (action.startsWith("HINDARI")) return "hindari";
   return "tunggu";
 }
 
-const HARI = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
-const BULAN = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus",
-  "September", "Oktober", "November", "Desember"];
+export const flagColor: Record<string, string> = {
+  good: C.up,
+  neutral: C.info,
+  caution: C.warn,
+  danger: C.down,
+};
 
-// "2026-09-25T10:35:00+00:00" -> "Jumat, 25 September 2026 pukul 17.35 WIB"
-// (tanpa jam -> tanggal aja). Digeser manual ke WIB biar gak tergantung zona waktu HP.
-export function fmtWaktu(iso?: string, tanggal?: string): string {
-  const t = iso ? Date.parse(iso) : NaN;
-  if (!isNaN(t)) {
-    const d = new Date(t + 7 * 3600e3);
-    const hh = String(d.getUTCHours()).padStart(2, "0");
-    const mm = String(d.getUTCMinutes()).padStart(2, "0");
-    return `${HARI[d.getUTCDay()]}, ${d.getUTCDate()} ${BULAN[d.getUTCMonth()]} ${d.getUTCFullYear()} pukul ${hh}.${mm} WIB`;
-  }
-  const d = tanggal ? new Date(tanggal.slice(0, 10) + "T00:00:00Z") : null;
-  if (d && !isNaN(+d)) return `${HARI[d.getUTCDay()]}, ${d.getUTCDate()} ${BULAN[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
-  return tanggal || "";
+export function actionColor(action: string): string {
+  const g = group(action);
+  return g === "beli" ? C.up : g === "hindari" ? C.down : C.warn;
 }
 
-// format angka ala Indonesia: 1310 -> "1.310"
-export function fmtInt(n: number | null | undefined): string {
-  if (n === null || n === undefined) return "–";
-  return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+export function verdictColor(v: string): string {
+  if (v === "JUAL") return C.down;
+  if (v === "WASPADA") return C.warn;
+  return C.up; // TAHAN
+}
+
+// warna sentimen berita: + hijau, - merah, ~0 netral (biru)
+export function sentColor(score: number | null | undefined): string {
+  if (score == null) return C.muted;
+  if (score > 0.15) return C.up;
+  if (score < -0.15) return C.down;
+  return C.info;
 }
 
 // Risk:Reward = (target-entry)/(entry-stop)
@@ -108,10 +76,10 @@ export function rr(c: Call): string | null {
   if (c.entry == null || c.target == null || c.stop == null) return null;
   const risk = c.entry - c.stop;
   if (risk <= 0) return null;
-  return (((c.target - c.entry) / risk)).toFixed(2);
+  return ((c.target - c.entry) / risk).toFixed(2);
 }
 
-// persen ke target / ke stop
+// persen perubahan from -> to ("13.7")
 export function pct(from: number | null, to: number | null): string | null {
   if (from == null || to == null || from === 0) return null;
   return (((to - from) / from) * 100).toFixed(1);
