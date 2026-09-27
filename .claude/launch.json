@@ -2,18 +2,18 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "dashboard",
-      "runtimeExecutable": ".venv/Scripts/python.exe",
-      "runtimeArgs": ["-m", "streamlit", "run", "dashboard.py", "--server.headless=true"],
-      "autoPort": true,
-      "port": 8501
-    },
-    {
       "name": "expo-web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "mobile", "run", "web"],
+      "runtimeArgs": ["run", "web"],
       "port": 8081,
       "url": "http://localhost:8081"
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "backend.api:app", "--port", "8000"],
+      "port": 8000,
+      "url": "http://localhost:8000/health"
     }
   ]
 }

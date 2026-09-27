@@ -26,7 +26,7 @@ import {
   sampleAnalysis,
   sentColor,
   verdictColor,
-} from "./src/analysis";
+} from "./analysis";
 import {
   addTrade,
   API_BASE,
@@ -59,7 +59,7 @@ import {
   Slicing,
   setLlmConfig,
   testLlm,
-} from "./src/api";
+} from "./api";
 
 type Tab = "beli" | "tunggu" | "hindari";
 const TABS: { key: Tab; label: string }[] = [
