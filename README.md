@@ -47,16 +47,21 @@ data/                 trade.db, analysis.json, brief (TIDAK ke GitHub)
 
 ## App HP
 
+Pemakaian sehari-hari: cukup buka app **Trade IDX** (APK) di HP. Laptop gak perlu nyala, gak perlu
+`expo start`, gak perlu link tunnel — kode app udah di dalam APK, update datang lewat OTA, data dari server.
+
+Buat ngembangin app di laptop:
+
 ```bash
 npm install
 ```
 
 ```bash
-npm start
+npm run web
 ```
 
-`npm start` = buka lewat Expo Go (scan QR). `npm run web` = versi browser buat ngetes di laptop.
-`npm run typecheck` = cek TypeScript.
+`npm run web` = app versi browser di laptop. `npm start` = buka lewat Expo Go (HP & laptop satu WiFi;
+`--tunnel` gak perlu lagi). `npm run typecheck` = cek TypeScript.
 
 Rilis ke HP yang udah terpasang APK (update OTA, gak perlu install ulang):
 
