@@ -18,6 +18,7 @@ from datetime import date, datetime, timedelta, timezone
 from .db import init_db
 from .indicators import atr
 from .risk import LOT, TRAIL_MULT, allocate, is_risk_off
+from .ticks import round_levels
 
 MODAL_UJI = 1_500_000
 FEE_BUY, FEE_SELL = 0.0015, 0.0025   # beli = sama dengan Slicing; jual = fee + pajak
@@ -48,6 +49,8 @@ RULES = {
         "sama dua-duanya kesentuh, dihitung kena Stop.",
         "Saran BELI yang diulang tiap hari buat saham yang sama dihitung satu, selama saran sebelumnya belum "
         "selesai.",
+        "Entry, Target, dan Stop dibulatkan ke kelipatan harga yang sah di bursa (fraksi harga BEI, mis. "
+        "2.991 jadi 2.990), jadi angkanya bisa langsung dipasang di broker.",
         "Rata-rata hasil = perubahan harga dari penutupan sebelum saran pertama keluar sampai penutupan "
         "terakhir (belum dipotong biaya). Saran yang bagus: BELI paling tinggi, HINDARI paling rendah.",
     ],
@@ -83,7 +86,8 @@ def archive(conn, analysis: dict, now: datetime | None = None) -> str:
 def _load_archive(conn) -> list[tuple[str, dict]]:
     if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='analysis_archive'").fetchone():
         return []
-    return [(r[0], json.loads(r[1])) for r in conn.execute("SELECT date, json FROM analysis_archive ORDER BY date")]
+    return [(r[0], round_levels(json.loads(r[1])))
+            for r in conn.execute("SELECT date, json FROM analysis_archive ORDER BY date")]
 
 
 def _load_bars(conn, tickers, since: str) -> dict[str, list[Bar]]:

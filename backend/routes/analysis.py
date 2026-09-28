@@ -12,6 +12,7 @@ from trade.config import ANALYSIS_PATH
 from trade.db import get_connection, norm_ticker
 from trade.macro import latest as macro_latest
 from trade.risk import allocate, is_risk_off
+from trade.ticks import round_levels
 
 router = APIRouter()
 
@@ -21,7 +22,7 @@ def get_analysis():
     """Hasil analisa terbaru (data/analysis.json, ditulis scripts/auto_analisa.py tiap pagi)."""
     if not ANALYSIS_PATH.exists():
         raise HTTPException(404, "Belum ada analisa. Tunggu jadwal analisa pagi (Senin-Jumat 05:00 WIB).")
-    a = json.loads(ANALYSIS_PATH.read_text(encoding="utf-8"))
+    a = round_levels(json.loads(ANALYSIS_PATH.read_text(encoding="utf-8")))   # Entry/Target/Stop = fraksi BEI
     if not a.get("generated_at"):   # analisa lama belum nyatet jam -> pakai waktu file
         mtime = ANALYSIS_PATH.stat().st_mtime
         a["generated_at"] = datetime.fromtimestamp(mtime, timezone.utc).isoformat(timespec="seconds")

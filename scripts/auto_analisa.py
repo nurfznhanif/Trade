@@ -29,6 +29,7 @@ from trade.indicators import rsi, sma
 from trade.journal import report
 from trade.msci import msci_status
 from trade.newsbody import bodies_for
+from trade.ticks import round_levels
 
 
 # ---------------------------------------------------------------- kumpulin data
@@ -210,7 +211,7 @@ def main() -> None:
     context, data_date = gather_context(conn)
     print(f"- data per {data_date} | LLM {cfg['label']} / {cfg['model']}")
     print(f"- context ~{len(context)} char, manggil LLM...", flush=True)
-    obj = extract_json(llm.generate(build_prompt(context), os.environ))
+    obj = round_levels(extract_json(llm.generate(build_prompt(context), os.environ)))   # harga sah di broker
 
     obj.setdefault("generated", date.today().isoformat())
     obj["generated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")   # app: "pukul HH.MM WIB"
