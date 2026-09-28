@@ -6,6 +6,8 @@ Peta folder & cara jalanin: lihat README.md. Pengguna dipanggil "Bapak", bahasa 
 - Server produksi jalanin path tetap: `backend/api.py` (`uvicorn backend.api:app`), `scripts/daily.py`,
   `scripts/auto_analisa.py`, `deploy/auto_update.sh`, `deploy/terima_data.sh`, `requirements.txt`.
   Push ke `main` = auto-deploy ke server dalam <=15 menit. Jangan pindah/rename path itu.
+- Jadwal tanpa root: backend/scheduler.py (thread di backend, aktif cuma kalau TRADE_API_TOKEN diisi) jalanin
+  update harga sore 17.00 WIB. Timer systemd (05:00) cuma bisa diubah root lewat Workbench.
 - Server = Python 3.10: jangan pakai sintaks 3.11+ (f-string bersarang/backslash di f-string, `except*`, dll).
 - Ngetes backend/pipeline/jurnal: SELALU pakai salinan DB (`TRADE_DATA_DIR=<folder salinan>`).
   Jangan pernah isi jurnal asli (`data/trade.db`) dengan data tes.

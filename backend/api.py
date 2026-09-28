@@ -5,6 +5,7 @@ JANGAN pindah/rename file ini, nanti server mati sampai unit systemd-nya diedit 
 
 KUNCI AKSES: kalau TRADE_API_TOKEN diisi di .env (WAJIB di server), semua endpoint kecuali
 /health minta header `X-Token`. Kosong = bebas (buat ngetes di PC).
+Di server backend juga jalanin update harga sore 17.00 WIB (scheduler.py).
 
 Jalanin di PC:  .venv/Scripts/python.exe -m uvicorn backend.api:app --port 8000
 """
@@ -13,6 +14,7 @@ from __future__ import annotations
 import os
 import secrets
 import subprocess
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from trade.config import ANALYSIS_PATH, BASE_DIR, read_env
 from trade.llm import migrate_env
 
+from . import scheduler
 from .routes import analysis, journal, news, rapor, settings
 
 migrate_env()   # .env format lama (LLM_API_KEY dll) -> LLM_KEY_<PROVIDER>
@@ -45,7 +48,14 @@ def _git_version() -> str:
 
 VERSION = _git_version()
 
-app = FastAPI(title="Trade IDX API", dependencies=[Depends(require_token)])
+@asynccontextmanager
+async def lifespan(_app):
+    if API_TOKEN:   # cuma di server (pakai kunci akses); backend tes di PC gak narik harga sendiri
+        scheduler.start()
+    yield
+
+
+app = FastAPI(title="Trade IDX API", dependencies=[Depends(require_token)], lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 for module in (analysis, news, journal, rapor, settings):
     app.include_router(module.router)

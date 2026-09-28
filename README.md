@@ -10,10 +10,11 @@ harga asli (portofolio uji otomatis + rapor saran BELI).
 ## Cara kerjanya
 
 ```
-Server cloud (VPS), Senin-Jumat 05:00 WIB
-  scripts/daily.py         harga -> makro -> berita -> sentimen -> sinyal -> paper trading -> brief
-  scripts/auto_analisa.py  brief + ISI artikel berita -> LLM (DeepSeek/Gemini/OpenAI) -> data/analysis.json
-  backend (FastAPI)        nyajiin analisa, jurnal, berita, slicing ke app (pakai kunci akses)
+Server cloud (VPS), Senin-Jumat
+  05:00  scripts/daily.py         harga -> makro -> berita -> sentimen -> sinyal -> paper trading -> brief
+  05:00  scripts/auto_analisa.py  brief + ISI artikel berita -> LLM (DeepSeek/Gemini/OpenAI) -> analisa + arsip
+  17:00  update harga sore        harga penutupan + IHSG (backend/scheduler.py) -> Rapor & Jurnal update sore itu
+  24 jam backend (FastAPI)        nyajiin analisa, jurnal, rapor, berita, slicing ke app (pakai kunci akses)
         |
 App HP (APK)              Analisa · Jurnal · Rapor · Berita · Pengaturan
 ```

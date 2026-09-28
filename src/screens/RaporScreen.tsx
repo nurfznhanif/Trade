@@ -35,7 +35,7 @@ export function RaporScreen() {
           <Text style={ui.emptyTitle}>Uji coba mulai analisa pagi berikutnya</Text>
           <Text style={ui.emptyDesc}>
             Tiap pagi jam 05.00 saran analisa diarsip, lalu portofolio uji {modalTxt} ngikutin Slicing Modal. Hasil
-            pertama kelihatan besok paginya, setelah harga penutupan masuk.
+            hari itu kelihatan sorenya jam 17.00, setelah harga penutupan masuk.
           </Text>
         </View>
         {rules}
@@ -48,7 +48,7 @@ export function RaporScreen() {
     <>
       <Head
         sub={`Otomatis ngikutin saran app sejak ${fmtDay(data.start ?? null)}` +
-          (data.asof ? ` · harga s/d ${fmtDay(data.asof)}` : " · harga pertama masuk besok pagi")}
+          (data.asof ? ` · harga s/d ${fmtDay(data.asof)}` : " · harga pertama masuk sore ini jam 17.00")}
       />
       <SimCard sim={sim} modalTxt={modalTxt} />
       <CallsCard calls={calls} />
@@ -125,7 +125,7 @@ function SimCard({ sim, modalTxt }: { sim: Sim; modalTxt: string }) {
               </Text>
             </View>
           ))}
-          <Text style={styles.note}>Kebeli atau enggak, ketahuan besok pagi setelah harga penutupan masuk.</Text>
+          <Text style={styles.note}>Kebeli atau enggak, ketahuan sore ini jam 17.00 setelah harga penutupan masuk.</Text>
         </>
       ) : null}
 
@@ -190,7 +190,7 @@ function CallsCard({ calls }: { calls: Calls }) {
         {done > 0
           ? `Dari ${done} saran yang udah selesai, ${b.target} kena Target duluan (${Math.round((b.target / done) * 100)}%).`
           : "Belum ada saran BELI yang selesai (kena Target atau Stop)."}
-        {b.wait > 0 ? ` ${b.wait} saran nunggu harga besok.` : ""}
+        {b.wait > 0 ? ` ${b.wait} saran nunggu harga penutupan (masuk jam 17.00).` : ""}
       </Text>
 
       <Text style={styles.part}>RATA-RATA HASIL SEJAK DISARANIN</Text>

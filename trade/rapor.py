@@ -38,7 +38,9 @@ RULES = {
         "dijual (biarin lari).",
         "Biaya dihitung: beli 0,15%, jual 0,25%. Posisi yang masih kebuka dinilai pakai harga penutupan "
         "terakhir dikurangi biaya jual.",
-        "Harga masuk tiap pagi jam 05.00, jadi hasil perdagangan hari ini baru kelihatan besok pagi.",
+        "Harga penutupan masuk tiap sore jam 17.00 (bursa tutup jam 16.00), jadi hasil hari ini udah "
+        "kelihatan sorenya. Ini swing trading: posisi ditahan beberapa hari sampai minggu, bukan beli-jual "
+        "dalam sehari.",
     ],
     "saran": [
         "Tiap saran BELI dicek pakai level dari saran itu sendiri: kebeli kalau harga nyentuh Entry di hari "
