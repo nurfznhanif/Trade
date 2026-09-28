@@ -29,7 +29,7 @@ src/                  App HP (TypeScript)
   analysis.ts         tipe analysis.json + warna aksi (BELI/TUNGGU/HINDARI)
   theme.ts  ui.ts     warna bermakna + style bersama
   format.ts           format angka & tanggal Indonesia
-assets/               ikon app + data contoh (tampil sebelum server ketemu)
+assets/               ikon app
 
 backend/              Server API (Python / FastAPI)
   api.py              pintu masuk + kunci akses (server jalanin: uvicorn backend.api:app)

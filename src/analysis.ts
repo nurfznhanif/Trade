@@ -1,5 +1,4 @@
 // Tipe data analysis.json (ditulis scripts/auto_analisa.py) + helper warna & kelompok aksi.
-import sample from "../assets/analysis.sample.json";
 import { C } from "./theme";
 
 export type Flag = "good" | "neutral" | "caution" | "danger";
@@ -32,9 +31,6 @@ export interface Analysis {
   calls: Call[];
   positions?: Position[];
 }
-
-// data contoh yang tampil sebelum server ketemu
-export const sampleAnalysis = sample as unknown as Analysis;
 
 export type Group = "beli" | "tunggu" | "hindari";
 

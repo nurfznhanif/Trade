@@ -10,7 +10,7 @@ import { ui } from "../../ui";
 import { useAsync } from "../../useAsync";
 
 // kartu 1 saran saham: aksi + level Entry/Target/Stop + chart (khusus BELI) + alasan dari berita
-export function CallCard({ c, live }: { c: Call; live: boolean }) {
+export function CallCard({ c }: { c: Call }) {
   const col = actionColor(c.action);
   const toTarget = pct(c.entry, c.target);
   const toStop = pct(c.entry, c.stop);
@@ -36,8 +36,8 @@ export function CallCard({ c, live }: { c: Call; live: boolean }) {
         </View>
       ) : null}
 
-      {/* chart cuma buat saham saran BELI (dan cuma kalau server nyambung) */}
-      {live && group(c.action) === "beli" && c.entry != null ? <CallChart c={c} /> : null}
+      {/* chart cuma buat saham saran BELI */}
+      {group(c.action) === "beli" && c.entry != null ? <CallChart c={c} /> : null}
 
       {c.lot ? (
         <View style={ui.iconRow}>

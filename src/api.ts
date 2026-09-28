@@ -17,6 +17,13 @@ const norm = (u: string) => u.trim().replace(/\/+$/, "");
 // pesan error yang kebaca manusia
 export const errMsg = (e: any) => String(e?.message || e);
 
+// status sambungan ke server: lagi dicari / tersambung / ketemu tapi kunci akses ditolak / gak ketemu
+export type Conn = "cari" | "ok" | "kunci" | "mati";
+
+// server nolak karena kunci akses kosong / salah (beda dari server mati).
+// Pakai penanda, bukan `instanceof` subclass Error (gak selalu jalan setelah dikompilasi buat Android).
+export const isAuthError = (e: any) => e?.auth === true;
+
 async function ping(base: string, ms = 3000): Promise<boolean> {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), ms);
@@ -94,6 +101,7 @@ async function req(path: string, init?: RequestInit) {
       const d = JSON.parse(t).detail;
       if (typeof d === "string") detail = d;
     } catch {}
+    if (r.status === 401) throw Object.assign(new Error(detail || "Kunci akses salah atau kosong."), { auth: true });
     throw new Error(detail || `HTTP ${r.status}${t ? " · " + t.slice(0, 120) : ""}`);
   }
   return r.json();

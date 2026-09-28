@@ -12,7 +12,7 @@ const PALET = [C.accent, C.info, "#818cf8", "#a78bfa", "#22d3ee", "#5eead4"];
 const rp = (x: number) => `Rp${fmtRpShort(x)}`;
 
 // SLICING MODAL: bagi modal ke saham BELI hari ini. Hitungan aturan risiko di server (bukan LLM).
-export function SlicingCard({ live }: { live: boolean }) {
+export function SlicingCard() {
   const [modal, setModal] = useState("");
   const [res, setRes] = useState<Slicing | null>(null);
   const [busy, setBusy] = useState(false);
@@ -25,7 +25,6 @@ export function SlicingCard({ live }: { live: boolean }) {
   const hitung = () => {
     const m = num(modal);
     if (!m) return setErr("Isi modal dulu.");
-    if (!live) return setErr("Server belum nyambung.");
     setBusy(true);
     setErr("");
     saveModal(modal);

@@ -3,10 +3,10 @@ import { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { Analysis, Group, sampleAnalysis } from "./analysis";
-import { errMsg, getAnalysis, getMacro, loadApiBase, MacroItem } from "./api";
+import { Analysis, Group } from "./analysis";
+import { Conn, errMsg, getAnalysis, getMacro, isAuthError, loadApiBase, MacroItem } from "./api";
 import { BottomNav, Nav } from "./components/BottomNav";
-import { OfflineCard } from "./components/Feedback";
+import { LockedCard, OfflineCard } from "./components/Feedback";
 import { fmtWaktu } from "./format";
 import { AnalysisScreen } from "./screens/analysis/AnalysisScreen";
 import { JournalScreen } from "./screens/journal/JournalScreen";
@@ -19,17 +19,20 @@ import { ui } from "./ui";
 export default function App() {
   const [nav, setNav] = useState<Nav>("analisa");
   const [tab, setTab] = useState<Group>("beli"); // filter Beli/Tunggu/Hindari (diinget pas pindah menu)
-  const [data, setData] = useState<Analysis>(sampleAnalysis); // data contoh sampai server ketemu
-  const [live, setLive] = useState(false);
-  const [note, setNote] = useState("");
+  const [data, setData] = useState<Analysis | null>(null); // analisa ASLI dari server; belum ada = gak tampil apa-apa
   const [macro, setMacro] = useState<MacroItem[]>([]);
-  const [conn, setConn] = useState<"cari" | "ok" | "mati">("cari");
+  const [conn, setConn] = useState<Conn>("cari");
+  const [note, setNote] = useState("");
 
   // ambil analisa + angka makro dari server
-  const loadLive = (showErr = true) => {
+  const loadLive = () => {
     getAnalysis()
-      .then((a) => { setData(a); setLive(true); setNote(""); })
-      .catch((e) => { setLive(false); setNote(showErr ? "Gagal ambil analisa: " + errMsg(e) : ""); });
+      .then((a) => { setData(a); setConn("ok"); setNote(""); })
+      .catch((e) => {
+        setData(null);
+        if (isAuthError(e)) { setConn("kunci"); setNote(""); }
+        else { setConn("ok"); setNote("Gagal ambil analisa: " + errMsg(e)); }
+      });
     getMacro()
       .then((m) => setMacro(m.items))
       .catch(() => setMacro([]));
@@ -38,10 +41,7 @@ export default function App() {
   // cari server otomatis (gak perlu isi alamat), terus muat data
   const connect = () => {
     setConn("cari");
-    loadApiBase().then((hit) => {
-      setConn(hit ? "ok" : "mati");
-      loadLive(!!hit);
-    });
+    loadApiBase().then((hit) => (hit ? loadLive() : setConn("mati")));
   };
 
   useEffect(() => {
@@ -56,18 +56,17 @@ export default function App() {
           <Text style={styles.logo}>
             TRADE <Text style={styles.logoAccent}>IDX</Text>
           </Text>
-          <Text style={styles.sub}>{fmtWaktu(data.generated_at, data.generated)}</Text>
+          {data ? <Text style={styles.sub}>{fmtWaktu(data.generated_at, data.generated)}</Text> : null}
           {conn === "cari" ? <Text style={styles.sub}>Nyari server…</Text> : null}
           {conn === "mati" ? <OfflineCard onRetry={connect} /> : null}
+          {conn === "kunci" && nav !== "pengaturan" ? <LockedCard onOpen={() => setNav("pengaturan")} /> : null}
           {note ? <Text style={ui.note}>{note}</Text> : null}
 
-          {nav === "analisa" && <AnalysisScreen data={data} live={live} macro={macro} tab={tab} onTab={setTab} />}
+          {nav === "analisa" && data ? <AnalysisScreen data={data} macro={macro} tab={tab} onTab={setTab} /> : null}
           {nav === "jurnal" && <JournalScreen data={data} />}
           {nav === "rapor" && <RaporScreen />}
           {nav === "berita" && <NewsScreen />}
-          {nav === "pengaturan" && (
-            <SettingsScreen connected={conn === "cari" ? null : conn === "ok" && live} onConnected={connect} />
-          )}
+          {nav === "pengaturan" && <SettingsScreen conn={conn} onConnected={connect} />}
         </ScrollView>
         <BottomNav nav={nav} setNav={setNav} />
       </SafeAreaView>

@@ -14,8 +14,8 @@ const GROUPS: { key: Group; label: string; color: string }[] = [
 
 // Tab Analisa: makro -> slicing modal -> jumlah saran -> filter -> kartu saran saham
 export function AnalysisScreen({
-  data, live, macro, tab, onTab,
-}: { data: Analysis; live: boolean; macro: MacroItem[]; tab: Group; onTab: (g: Group) => void }) {
+  data, macro, tab, onTab,
+}: { data: Analysis; macro: MacroItem[]; tab: Group; onTab: (g: Group) => void }) {
   const counts = { beli: 0, tunggu: 0, hindari: 0 };
   data.calls.forEach((x) => (counts[group(x.action)] += 1));
 
@@ -24,7 +24,7 @@ export function AnalysisScreen({
       <MacroCard data={data} items={macro} />
 
       {/* slicing modal (analisa sendiri jalan otomatis tiap subuh di server) */}
-      <SlicingCard live={live} />
+      <SlicingCard />
 
       <View style={styles.tiles}>
         {GROUPS.map((g) => (
@@ -46,7 +46,7 @@ export function AnalysisScreen({
       </View>
 
       {data.calls.filter((c) => group(c.action) === tab).map((c) => (
-        <CallCard key={c.ticker} c={c} live={live} />
+        <CallCard key={c.ticker} c={c} />
       ))}
     </>
   );

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import {
-  API_BASE, API_TOKEN, deleteLlmKey, errMsg, getLlmConfig, getLlmModels, getLlmStatus, LlmInfo,
+  API_BASE, API_TOKEN, Conn, deleteLlmKey, errMsg, getLlmConfig, getLlmModels, getLlmStatus, LlmInfo,
   loadApiBase, saveApiBase, saveApiToken, setLlmConfig, testLlm,
 } from "../api";
 import { Dropdown } from "../components/Dropdown";
@@ -14,7 +14,7 @@ type LlmStatusView = { state: "cek" | "ok" | "gagal" | "tau"; text?: string; sal
 
 // Tab Pengaturan: koneksi ke server + otak analisa (provider/model LLM + API key per provider).
 // Alur ganti otak: pilih provider & model -> (tempel key) -> Cek (LLM beneran dites) -> Simpan.
-export function SettingsScreen({ connected, onConnected }: { connected: boolean | null; onConnected: () => void }) {
+export function SettingsScreen({ conn, onConnected }: { conn: Conn; onConnected: () => void }) {
   const [info, setInfo] = useState<LlmInfo | null>(null);
   const [prov, setProv] = useState("");
   const [model, setModel] = useState("");
@@ -185,8 +185,13 @@ export function SettingsScreen({ connected, onConnected }: { connected: boolean 
     rowDot = C.up; rowText = `API key ${label} tersimpan${showBar ? " — klik Cek" : ""}`;
   }
 
-  const connColor = connected ? C.up : connected === null ? C.muted : C.warn;
-  const connText = connected ? "Tersambung ke server" : connected === null ? "Nyari server…" : "Belum tersambung";
+  const CONN: Record<Conn, { color: string; text: string }> = {
+    ok: { color: C.up, text: "Tersambung ke server" },
+    cari: { color: C.muted, text: "Nyari server…" },
+    kunci: { color: C.warn, text: "Server ketemu — kunci akses kosong atau salah" },
+    mati: { color: C.warn, text: "Belum tersambung" },
+  };
+  const { color: connColor, text: connText } = CONN[conn];
 
   return (
     <View style={styles.root}>
@@ -200,7 +205,7 @@ export function SettingsScreen({ connected, onConnected }: { connected: boolean 
           <Text style={styles.link}>{showConn ? "Tutup" : "Ubah"}</Text>
         </Pressable>
       </View>
-      {showConn || connected === false ? (
+      {showConn || conn === "kunci" || conn === "mati" ? (
         <>
           <Text style={ui.inputLabel}>Alamat Server</Text>
           <TextInput style={ui.input} value={base} onChangeText={setBase}

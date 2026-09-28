@@ -11,7 +11,7 @@ import { AddTradeForm } from "./AddTradeForm";
 import { ClosedTradeCard, OpenTradeCard } from "./TradeCards";
 
 // Tab Jurnal: jurnal trading REAL (disimpan di server). Verdict TAHAN/WASPADA/JUAL dari analisa nempel di posisi.
-export function JournalScreen({ data }: { data: Analysis }) {
+export function JournalScreen({ data }: { data: Analysis | null }) {
   const [j, setJ] = useState<{ trades: JournalTrade[]; summary: JournalSummary } | null>(null);
   const [err, setErr] = useState("");
   const [adding, setAdding] = useState(false);
@@ -29,7 +29,7 @@ export function JournalScreen({ data }: { data: Analysis }) {
 
   const open = j.trades.filter((t) => t.status === "open");
   const closed = j.trades.filter((t) => t.status === "closed");
-  const verdicts = new Map((data.positions || []).map((p) => [p.ticker, p]));
+  const verdicts = new Map((data?.positions || []).map((p) => [p.ticker, p]));
 
   return (
     <>
@@ -41,7 +41,7 @@ export function JournalScreen({ data }: { data: Analysis }) {
       {j.trades.length > 0 ? <SummaryCard s={j.summary} /> : null}
 
       {adding ? (
-        <AddTradeForm calls={data.calls} onDone={() => { setAdding(false); load(); }} onCancel={() => setAdding(false)} />
+        <AddTradeForm calls={data?.calls ?? []} onDone={() => { setAdding(false); load(); }} onCancel={() => setAdding(false)} />
       ) : (
         <Pressable style={({ pressed }) => [styles.addBtn, pressed && ui.pressed]} onPress={() => setAdding(true)}>
           <View style={styles.addRow}>

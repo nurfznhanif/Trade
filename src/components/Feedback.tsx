@@ -19,7 +19,9 @@ export function ErrBox({ msg }: { msg: string }) {
       <Ionicons name="cloud-offline-outline" size={40} color={C.dim} />
       <Text style={ui.emptyTitle}>Server belum nyambung</Text>
       <Text style={ui.emptyDesc}>{msg || "Gagal ambil data."}</Text>
-      <Text style={ui.emptyDesc}>Cek internet HP, lalu buka lagi menu ini.</Text>
+      <Text style={ui.emptyDesc}>
+        {/kunci akses/i.test(msg) ? "Isi Kunci Akses di menu Pengaturan, bagian Koneksi." : "Cek internet HP, lalu buka lagi menu ini."}
+      </Text>
     </View>
   );
 }
@@ -33,11 +35,31 @@ export function OfflineCard({ onRetry }: { onRetry: () => void }) {
         <Text style={styles.offTitle}>Server belum nyambung</Text>
       </View>
       <Text style={styles.offDesc}>
-        Cek internet HP, lalu ketuk Sambung ulang. Sementara ini yang tampil data contoh, bukan analisa hari ini.
+        Cek internet HP, lalu ketuk Sambung ulang.
       </Text>
       <Pressable style={({ pressed }) => [styles.offBtn, pressed && ui.pressed]} onPress={onRetry}>
         <Ionicons name="refresh" size={15} color={C.warn} />
         <Text style={styles.offBtnText}>Sambung ulang</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+// server ketemu tapi nolak: kunci akses belum diisi di perangkat ini (tiap HP / browser nyimpen sendiri)
+export function LockedCard({ onOpen }: { onOpen: () => void }) {
+  return (
+    <View style={styles.offCard}>
+      <View style={styles.offHead}>
+        <Ionicons name="key-outline" size={17} color={C.warn} />
+        <Text style={styles.offTitle}>Kunci akses belum diisi</Text>
+      </View>
+      <Text style={styles.offDesc}>
+        Server udah ketemu, tapi butuh kunci akses. Tiap HP atau browser nyimpen kuncinya sendiri, jadi isi sekali
+        di perangkat ini.
+      </Text>
+      <Pressable style={({ pressed }) => [styles.offBtn, pressed && ui.pressed]} onPress={onOpen}>
+        <Ionicons name="settings-outline" size={15} color={C.warn} />
+        <Text style={styles.offBtnText}>Isi Kunci Akses</Text>
       </Pressable>
     </View>
   );
