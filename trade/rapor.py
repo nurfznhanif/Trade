@@ -18,7 +18,7 @@ from datetime import date, datetime, timedelta, timezone
 from .db import init_db
 from .indicators import atr
 from .risk import LOT, TRAIL_MULT, allocate, is_risk_off
-from .ticks import round_levels
+from .ticks import round_levels, round_tick
 
 MODAL_UJI = 1_500_000
 FEE_BUY, FEE_SELL = 0.0015, 0.0025   # beli = sama dengan Slicing; jual = fee + pajak
@@ -106,7 +106,7 @@ def _trail(rows: list[Bar], i: int, stop: float, entry_i: int) -> float:
     a = atr([b.high for b in past], [b.low for b in past], [b.close for b in past], 14) if len(past) > 15 else None
     if hh is None or a is None:
         return stop
-    return max(stop, hh - TRAIL_MULT * a)
+    return round_tick(max(stop, hh - TRAIL_MULT * a))   # harga sah di broker, sama dengan menu Jurnal
 
 
 def _net(shares: float, buy: float, sell: float) -> dict:
@@ -199,7 +199,7 @@ def _simulate(days: list[str], by_day: dict[str, dict], pending: dict | None,
         positions.append({"ticker": p["ticker"], "lot": p["lot"], "buy_date": p["buy_date"], "buy_px": p["buy_px"],
                           "stop": p["stop"], "target": p["target"], "hit_target": p["hit_target"],
                           "last": last.close, "last_date": last.date,
-                          "trail": round(_trail(rows, len(rows), p["stop"], p["entry_i"]), 2),
+                          "trail": _trail(rows, len(rows), p["stop"], p["entry_i"]),
                           **_net(p["shares"], p["buy_px"], last.close)})
 
     value = sum(p["lot"] * LOT * p["last"] * (1 - FEE_SELL) for p in positions)

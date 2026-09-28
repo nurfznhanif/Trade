@@ -13,6 +13,7 @@ max 425% vs 189%). Target = checkpoint pertama, TAPI biarin lari: geser stop nai
 from __future__ import annotations
 
 from .indicators import atr as _atr
+from .ticks import round_tick
 
 LOT = 100          # 1 lot IDX = 100 lembar
 TRAIL_MULT = 3.0   # trailing = high tertinggi - 3*ATR (samain sama backtest)
@@ -126,6 +127,6 @@ def trailing_stop_level(conn, ticker: str, entry_date: str, init_stop,
     if a is None or hh is None:
         return {"trail": init_stop, "atr": a, "hh": hh, "naik": False}
     base = init_stop if init_stop else 0.0
-    trail = max(base, hh - mult * a)
-    return {"trail": round(trail, 2), "atr": a, "hh": hh,
+    trail = round_tick(max(base, hh - mult * a))   # harga sah di broker (fraksi BEI)
+    return {"trail": trail, "atr": a, "hh": hh,
             "naik": trail > (init_stop or 0)}
