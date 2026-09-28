@@ -11,7 +11,8 @@ harga asli (portofolio uji otomatis + rapor saran BELI).
 
 ```
 Server cloud (VPS), Senin-Jumat
-  05:00  scripts/daily.py         harga -> makro -> berita -> sentimen -> sinyal -> paper trading -> brief
+  05:00  scripts/daily.py         cadangan jurnal -> harga -> makro -> berita -> sentimen -> fundamental
+                                  (tiap Senin) -> sinyal -> paper trading -> brief
   05:00  scripts/auto_analisa.py  brief + ISI artikel berita -> LLM (DeepSeek/Gemini/OpenAI) -> analisa + arsip
   17:00  update harga sore        harga penutupan + IHSG (backend/scheduler.py) -> Rapor & Jurnal update sore itu
   24 jam backend (FastAPI)        nyajiin analisa, jurnal, rapor, berita, slicing ke app (pakai kunci akses)
@@ -88,7 +89,8 @@ salinan `trade.db` (semua script & backend ikut pakai folder itu).
 
 | Script | Kapan | Isinya |
 |---|---|---|
-| `daily.py` | tiap hari (server) | jalanin 7 langkah di bawah berurutan |
+| `daily.py` | tiap hari (server) | jalanin langkah di bawah berurutan |
+| `backup_jurnal.py` | langkah 0 | cadangan jurnal -> `data/backup/` (30 hari); `--restore FILE` buat mulihin |
 | `backfill_prices.py` | langkah 1 | harga harian (yfinance) |
 | `fetch_macro.py` | langkah 2 | IHSG, kurs, emas, minyak, DXY, yield AS, VIX + regime IHSG |
 | `fetch_news.py` | langkah 3 | berita Google News per saham |
@@ -97,7 +99,7 @@ salinan `trade.db` (semua script & backend ikut pakai folder itu).
 | `paper_run.py` | langkah 6 | paper trading (uji maju strategi) |
 | `brief.py` | langkah 7 | `data/brief_latest.md`, bahan analisa LLM |
 | `auto_analisa.py` | tiap hari (server) | LLM baca brief + isi artikel -> `data/analysis.json` + arsip buat Rapor |
-| `fetch_fundamentals.py` | mingguan/bulanan | PER, PBV, ROE, DER, margin |
+| `fetch_fundamentals.py` | tiap Senin (otomatis di daily.py) | PER, PBV, ROE, DER, margin |
 | `screen.py` | sesekali | pilih ulang saham likuid (`focus_list`) |
 | `backtest.py` | riset | uji aturan sinyal/exit ke data historis |
 
@@ -113,6 +115,13 @@ arsip + harga asli (`trade/rapor.py`), terpisah total dari jurnal asli:
 - **Rapor saran** — tiap saran BELI: kebeli? kena Target atau Stop duluan? + rata-rata hasil BELI / TUNGGU /
   HINDARI vs IHSG.
 Aturan lengkapnya tampil di app ("Cara ngukurnya"). Butuh ±50 saran (1-2 bulan) buat kesimpulan.
+
+## Cadangan jurnal
+
+Jurnal asli ada di server. Cadangannya dua lapis:
+- server nyimpen salinan tiap pagi di `data/backup/` (30 hari terakhir);
+- app di HP nyimpen salinan tiap menu Jurnal kebuka. Kalau jurnal di server tiba-tiba kosong (server dipasang
+  ulang), app nawarin **Pulihkan** (`POST /journal/restore`, cuma jalan kalau jurnal server kosong).
 
 ## Server
 

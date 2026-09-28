@@ -111,6 +111,36 @@ def report(conn) -> dict:
     return {"trades": trades, "summary": summary(rows, px)}
 
 
+# kolom yang dicadangkan (isi asli jurnal; P/L & garis jual dihitung ulang dari harga)
+BACKUP_FIELDS = ("id", "ticker", "entry_date", "entry", "lot", "stop", "target", "thesis",
+                 "exit_date", "exit", "status", "created")
+
+
+def export_rows(conn) -> list[dict]:
+    """Isi asli jurnal buat dicadangkan."""
+    return [{k: r[k] for k in BACKUP_FIELDS} for r in conn.execute("SELECT * FROM journal ORDER BY id")]
+
+
+def restore(conn, rows: list[dict]) -> int:
+    """Pulihkan jurnal dari cadangan — CUMA kalau jurnal sekarang kosong (biar gak pernah dobel / ketimpa).
+    Baris yang gak lengkap dilewati. Return jumlah baris yang dipulihkan."""
+    if conn.execute("SELECT COUNT(*) FROM journal").fetchone()[0]:
+        raise ValueError("Jurnal di server udah ada isinya, pemulihan dibatalin biar gak dobel.")
+    clean = []
+    for r in rows:
+        if not r.get("ticker") or _f(r.get("entry")) is None or _f(r.get("lot")) is None or not r.get("entry_date"):
+            continue
+        status = "closed" if r.get("status") == "closed" and _f(r.get("exit")) is not None else "open"
+        clean.append((r.get("id") if isinstance(r.get("id"), int) else None, norm_ticker(r["ticker"]),
+                      str(r["entry_date"])[:10], _f(r["entry"]), _f(r["lot"]), _f(r.get("stop")),
+                      _f(r.get("target")), r.get("thesis"), (str(r["exit_date"])[:10] if r.get("exit_date") else None),
+                      _f(r.get("exit")) if status == "closed" else None, status, r.get("created")))
+    conn.executemany(f"INSERT INTO journal ({', '.join(BACKUP_FIELDS)}) VALUES ({', '.join('?' * len(BACKUP_FIELDS))})",
+                     clean)
+    conn.commit()
+    return len(clean)
+
+
 def _f(v):
     try:
         return float(v)

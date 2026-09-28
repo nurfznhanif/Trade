@@ -28,6 +28,10 @@ class CloseIn(BaseModel):
     exit_date: str | None = None
 
 
+class RestoreIn(BaseModel):
+    trades: list[dict]
+
+
 def _iso_date(s: str | None, label: str) -> str | None:
     """'2026-09-25' -> dicek formatnya & gak boleh masa depan. Kosong -> None (= hari ini)."""
     if not s or not s.strip():
@@ -91,3 +95,15 @@ def delete_journal(trade_id: int):
     if not n:
         raise HTTPException(404, f"Catatan #{trade_id} gak ketemu.")
     return {"ok": True}
+
+
+@router.post("/journal/restore")
+def restore_journal(q: RestoreIn):
+    """Pulihkan jurnal dari cadangan yang disimpan app di HP. Cuma jalan kalau jurnal di server KOSONG
+    (mis. server baru dipasang ulang) — gak pernah numpuk atau nimpa isi yang ada."""
+    with closing(get_connection()) as conn:
+        try:
+            n = jr.restore(conn, q.trades)
+        except ValueError as e:
+            raise HTTPException(409, str(e))
+    return {"ok": True, "restored": n}

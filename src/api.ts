@@ -208,6 +208,7 @@ export interface JournalTrade {
   net_pct: number | null; // setelah fee + slippage
   pl_rp: number | null;
   trail: number | null; // garis jual trailing (posisi terbuka)
+  created?: string | null;
 }
 export interface JournalSummary {
   realized: number;
@@ -230,6 +231,32 @@ export const closeTrade = (id: number, exit: number, exit_date?: string | null) 
   req(`/journal/${id}/close`, json("POST", { exit, exit_date }));
 
 export const deleteTrade = (id: number) => req(`/journal/${id}`, { method: "DELETE" });
+
+// Cadangan jurnal DI HP: tiap Jurnal kebuka, isi aslinya disimpan di sini. Kalau server hilang / dipasang
+// ulang (jurnal di server kosong), app nawarin buat dipulihkan (POST /journal/restore, cuma kalau server kosong).
+const JOURNAL_COPY_KEY = "trade_journal_copy";
+const BACKUP_FIELDS = ["id", "ticker", "entry_date", "entry", "lot", "stop", "target", "thesis",
+  "exit_date", "exit", "status", "created"] as const;
+export interface JournalCopy {
+  saved_at: string;
+  trades: Record<string, unknown>[];
+}
+export async function saveJournalCopy(trades: JournalTrade[]): Promise<void> {
+  const rows = trades.map((t) => Object.fromEntries(BACKUP_FIELDS.map((k) => [k, (t as any)[k] ?? null])));
+  const copy: JournalCopy = { saved_at: new Date().toISOString(), trades: rows };
+  await AsyncStorage.setItem(JOURNAL_COPY_KEY, JSON.stringify(copy)).catch(() => {});
+}
+export async function loadJournalCopy(): Promise<JournalCopy | null> {
+  try {
+    const raw = await AsyncStorage.getItem(JOURNAL_COPY_KEY);
+    return raw ? (JSON.parse(raw) as JournalCopy) : null;
+  } catch {
+    return null;
+  }
+}
+export const clearJournalCopy = () => AsyncStorage.removeItem(JOURNAL_COPY_KEY).catch(() => {});
+export const restoreJournal = (trades: Record<string, unknown>[]): Promise<{ ok: boolean; restored: number }> =>
+  req("/journal/restore", json("POST", { trades }));
 
 // ---- Tab Rapor (uji coba otomatis; terpisah dari jurnal asli) ----
 export interface SimPosition {
