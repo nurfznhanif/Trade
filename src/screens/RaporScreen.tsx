@@ -22,7 +22,7 @@ export function RaporScreen() {
     <RuleList
       label="Cara ngukurnya"
       items={[...data.rules.portofolio, ...data.rules.saran]}
-      footer="SEMINGGU BELUM CUKUP BUAT KESIMPULAN — BUTUH ±50 SARAN (1–2 BULAN)"
+      footer="Hasil 1 minggu masih banyak unsur hoki. App ini baru bisa dinilai setelah ±50 saran BELI (sekitar 1–2 bulan)."
     />
   );
 
