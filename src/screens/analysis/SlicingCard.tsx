@@ -11,7 +11,8 @@ import { ui } from "../../ui";
 const PALET = [C.accent, C.info, "#818cf8", "#a78bfa", "#22d3ee", "#5eead4"];
 const rp = (x: number) => `Rp${fmtRpShort(x)}`;
 
-// SLICING MODAL: bagi modal ke saham BELI hari ini. Hitungan aturan risiko di server (bukan LLM).
+// SLICING MODAL: bagi uang KAS ke saham BELI hari ini. Hitungan aturan risiko di server (bukan LLM).
+// Saham yang udah dipegang (posisi terbuka di Jurnal) dilewati; ukuran dihitung dari modal total.
 export function SlicingCard() {
   const [modal, setModal] = useState("");
   const [res, setRes] = useState<Slicing | null>(null);
@@ -24,7 +25,7 @@ export function SlicingCard() {
 
   const hitung = () => {
     const m = num(modal);
-    if (!m) return setErr("Isi modal dulu.");
+    if (!m) return setErr("Isi uang kas dulu.");
     setBusy(true);
     setErr("");
     saveModal(modal);
@@ -48,7 +49,7 @@ export function SlicingCard() {
             value={modal}
             onChangeText={(v) => setModal(fmtRibuan(v))}
             keyboardType="numeric"
-            placeholder="modal, mis. 1.500.000"
+            placeholder="uang kas, mis. 1.500.000"
             placeholderTextColor={C.dim}
             onSubmitEditing={hitung}
           />
@@ -57,6 +58,10 @@ export function SlicingCard() {
           {busy ? <ActivityIndicator size="small" color={C.accent} /> : <Text style={ui.sideBtnText}>Hitung</Text>}
         </Pressable>
       </View>
+      <Text style={styles.hint}>
+        Isi uang kas yang belum dipakai beli (cek saldonya di Stockbit). Saham yang udah dicatat di Jurnal
+        otomatis dilewati.
+      </Text>
       {err ? <Text style={ui.formErr}>{err}</Text> : null}
       {res ? <SliceResult r={res} /> : null}
     </View>
@@ -74,24 +79,45 @@ function SliceStat({ label, val, sub, color }: { label: string; val: string; sub
 }
 
 function SliceResult({ r }: { r: Slicing }) {
-  const usedPct = r.modal ? r.used / r.modal : 0;
-  const more = r.skipped.length - 3;
+  const kas = r.kas_awal ?? r.modal;
+  const held = r.held ?? [];
+  const usedPct = kas ? r.used / kas : 0;
+  const dari = held.length ? "dari kas" : "dari modal";
+  const skipped = r.skipped.filter((s) => s.why !== "udah dipegang"); // yang dipegang udah dijelasin di kotak biru
+  const more = skipped.length - 3;
   const rk = r.rules;
+  const empty =
+    held.length >= rk.max_pos
+      ? `Udah pegang ${held.length} saham (maksimal ${rk.max_pos}). Tunggu ada yang kejual dulu.`
+      : r.skipped.length > 0 && r.skipped.every((s) => s.why === "udah dipegang")
+      ? "Semua saran BELI hari ini udah Bapak pegang."
+      : "Kas belum cukup buat saham BELI hari ini.";
   return (
     <View>
       <View style={styles.bar}>
         {r.picks.map((p, i) => (
-          <View key={p.ticker} style={{ flex: p.pct, backgroundColor: PALET[i % PALET.length] }} />
+          <View key={p.ticker} style={{ flex: kas ? p.value / kas : 0, backgroundColor: PALET[i % PALET.length] }} />
         ))}
         <View style={{ flex: Math.max(0, 1 - usedPct), backgroundColor: C.border }} />
       </View>
 
       <View style={styles.stats}>
-        <SliceStat label="Terpakai" val={rp(r.used)} sub={`${pctTxt(usedPct)} dari modal`} />
-        <SliceStat label="Tidak Terpakai" val={rp(r.cash)} sub={`${pctTxt(1 - usedPct)} dari modal`} />
+        <SliceStat label="Terpakai" val={rp(r.used)} sub={`${pctTxt(usedPct)} ${dari}`} />
+        <SliceStat label="Tidak Terpakai" val={rp(r.cash)} sub={`${pctTxt(1 - usedPct)} ${dari}`} />
         <SliceStat label="Untung" val={`+${rp(r.reward_rp)}`} sub={`+${pctTxt(r.reward_pct)} dari modal`} color={C.up} />
         <SliceStat label="Rugi" val={`−${rp(r.risk_rp)}`} sub={`−${pctTxt(r.risk_pct)} dari modal`} color={C.down} />
       </View>
+
+      {held.length > 0 ? (
+        <View style={styles.heldBox}>
+          <Ionicons name="briefcase-outline" size={15} color={C.info} />
+          <Text style={styles.heldText}>
+            Lagi pegang {held.length} saham ({held.map((h) => code(h.ticker)).join(", ")}) senilai
+            ±{rp(r.held_value ?? 0)}, jadi dilewati. Jatah tersisa {Math.max(0, rk.max_pos - held.length)} dari{" "}
+            {rk.max_pos} saham. Ukuran dihitung dari modal total ±{rp(r.modal)}, yang dibelanjain cuma kas {rp(kas)}.
+          </Text>
+        </View>
+      ) : null}
 
       {r.risk_off ? (
         <View style={styles.callout}>
@@ -136,11 +162,11 @@ function SliceResult({ r }: { r: Slicing }) {
           </View>
         </View>
       ))}
-      {r.picks.length === 0 ? <Text style={styles.note}>Modal belum cukup buat saham BELI hari ini.</Text> : null}
+      {r.picks.length === 0 ? <Text style={styles.note}>{empty}</Text> : null}
 
-      {r.skipped.length > 0 ? (
+      {skipped.length > 0 ? (
         <Text style={styles.note}>
-          Gak kebagian: {r.skipped.slice(0, 3).map((s) => `${code(s.ticker)} (${s.why})`).join(", ")}
+          Gak kebagian: {skipped.slice(0, 3).map((s) => `${code(s.ticker)} (${s.why})`).join(", ")}
           {more > 0 ? ` +${more} lainnya` : ""}
         </Text>
       ) : null}
@@ -150,12 +176,13 @@ function SliceResult({ r }: { r: Slicing }) {
         label="Cara hitungnya"
         footer="KEPUTUSAN TETAP DI TANGAN SENDIRI"
         items={[
-          `Tiap saham maksimal ${Math.round(rk.max_pct * 100)}% dari modal (${rp(r.modal * rk.max_pct)}), biar gak numpuk di satu saham. Kalau 1 lot aja udah lebih mahal dari itu, sahamnya dilewati.`,
+          `Tiap saham maksimal ${Math.round(rk.max_pct * 100)}% dari modal (${rp(r.modal * rk.max_pct)}), biar gak numpuk di satu saham. Kalau 1 lot aja udah lebih mahal dari itu, sahamnya dilewati.` +
+            (held.length ? ` Modal di sini = kas + nilai saham yang lagi dipegang (${rp(r.modal)}).` : ""),
           `Kalau harga turun sampai Stop, rugi tiap saham dijaga sekitar ${(rk.risk_pct * 100).toFixed(0)}% dari modal (${rp(r.modal * rk.risk_pct)}).` +
             (r.risk_off ? " Normalnya 2%, dipotong setengah karena pasar lagi RISK-OFF." : ""),
-          `Maksimal ${rk.max_pos} saham. Porsi yang kurang dari ${Math.round(rk.min_pct * 100)}% modal (${rp(r.modal * rk.min_pct)}) gak diambil karena kekecilan.`,
+          `Total maksimal ${rk.max_pos} saham, termasuk yang udah dipegang. Saham yang udah dicatat di Jurnal gak disaranin beli lagi. Porsi yang kurang dari ${Math.round(rk.min_pct * 100)}% modal (${rp(r.modal * rk.min_pct)}) gak diambil karena kekecilan.`,
           "Yang dapat jatah duluan: keyakinan (konviksi) paling tinggi, lalu yang peluang untungnya paling besar dibanding ruginya.",
-          "Fee beli 0,15% udah ikut dihitung. Sisa uang yang gak kebelikan jadi kas.",
+          "Yang dibelanjain cuma uang kas yang Bapak isi. Fee beli 0,15% udah ikut dihitung, sisa yang gak kebelikan tetap jadi kas.",
         ]}
       />
     </View>
@@ -167,6 +194,9 @@ const styles = StyleSheet.create({
   head: { flexDirection: "row", alignItems: "center", gap: 8 },
   rpBox: { flexDirection: "row", alignItems: "center", paddingVertical: 0 },
   rpPrefix: { color: C.muted, fontSize: 14, fontWeight: "700", marginRight: 6 },
+  hint: { color: C.dim, fontSize: 11, lineHeight: 16, marginTop: 6 },
+  heldBox: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginBottom: 12, padding: 10, borderRadius: 10, backgroundColor: "rgba(56,189,248,0.08)", borderWidth: 1, borderColor: "rgba(56,189,248,0.30)" },
+  heldText: { flex: 1, color: C.textSoft, fontSize: 12, lineHeight: 17, textAlign: "justify" },
   rpInput: { flex: 1, minWidth: 0, color: C.text, fontSize: 15, fontWeight: "700", paddingVertical: 11 },
 
   bar: { flexDirection: "row", height: 8, borderRadius: 4, overflow: "hidden", marginTop: 14, gap: 2 },

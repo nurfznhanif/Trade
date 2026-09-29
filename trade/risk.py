@@ -51,14 +51,16 @@ def is_risk_off(analysis: dict) -> bool:
 
 
 def allocate(capital: float, calls: list[dict], risk_pct: float = 0.02, max_pct: float = 0.25,
-             max_pos: int = 6, min_pct: float = 0.05, fee: float = 0.0015, lot: int = LOT) -> dict:
-    """SLICING MODAL: bagi modal ke saham BELI dari analisa. Murni hitungan (BUKAN LLM).
+             max_pos: int = 6, min_pct: float = 0.05, fee: float = 0.0015, lot: int = LOT,
+             cash: float | None = None, held: list[str] | tuple = ()) -> dict:
+    """SLICING MODAL: bagi uang ke saham BELI dari analisa. Murni hitungan (BUKAN LLM).
 
-    Tiap saham: ukuran by risiko (entry->stop ≈ risk_pct modal; spekulatif setengahnya),
-    maks max_pct modal per saham (berlaku juga buat 1 lot), porsi < min_pct dibuang (remah),
-    total gak lebih dari modal (fee beli ikut dihitung). Sisa = kas.
-    Urutan jatah: konviksi tinggi dulu -> non-spekulatif -> R:R terbesar. Modal kecil: kalau
-    hitungan risiko 0 lot tapi 1 lot masih muat, tetap 1 lot (minimum IDX)."""
+    capital = modal TOTAL (kas + nilai saham yang udah dipegang) -> dasar ukuran: rugi di Stop ≈ risk_pct
+    modal (spekulatif setengahnya), maks max_pct modal per saham (berlaku juga buat 1 lot), porsi < min_pct
+    dibuang (remah). cash = uang yang beneran bisa dibelanjain (default = capital); fee beli ikut dihitung.
+    held = saham yang udah dipegang: dilewati, dan ngurangin jatah (total maksimal max_pos saham).
+    Urutan jatah: konviksi tinggi dulu -> non-spekulatif -> R:R terbesar. Modal kecil: kalau hitungan
+    risiko 0 lot tapi 1 lot masih muat, tetap 1 lot (minimum IDX)."""
     rank = {"tinggi": 0, "sedang-tinggi": 0.5, "sedang": 1, "rendah": 2}
     cands = []
     for c in calls:
@@ -71,11 +73,15 @@ def allocate(capital: float, calls: list[dict], risk_pct: float = 0.02, max_pct:
         cands.append((rank.get(str(c.get("conviction") or "").strip().lower(), 3), spek, -rr, c))
     cands.sort(key=lambda x: x[:3])
 
-    cash, picks, skipped = float(capital), [], []
+    start = float(capital if cash is None else cash)
+    left, picks, skipped = start, [], []
     for _, spek, _, c in cands:
         e, s = float(c["entry"]), float(c["stop"])
         per_lot = e * lot * (1 + fee)
-        if len(picks) >= max_pos:
+        if c["ticker"] in held:
+            skipped.append({"ticker": c["ticker"], "why": "udah dipegang"})
+            continue
+        if len(held) + len(picks) >= max_pos:
             skipped.append({"ticker": c["ticker"], "why": f"udah {max_pos} saham"})
             continue
         r = risk_pct / 2 if spek else risk_pct
@@ -83,17 +89,17 @@ def allocate(capital: float, calls: list[dict], risk_pct: float = 0.02, max_pct:
         if per_lot > capital * max_pct:
             skipped.append({"ticker": c["ticker"], "why": f"1 lot > {max_pct:.0%} modal"})
             continue
-        if lots == 0 and per_lot <= cash:
+        if lots == 0 and per_lot <= left:
             lots = 1                                     # modal kecil: minimal 1 lot
-        lots = min(lots, int(cash // per_lot))
+        lots = min(lots, int(left // per_lot))
         if lots <= 0:
-            skipped.append({"ticker": c["ticker"], "why": "modal sisa gak cukup"})
+            skipped.append({"ticker": c["ticker"], "why": "kas gak cukup"})
             continue
         if lots * per_lot < capital * min_pct:
             skipped.append({"ticker": c["ticker"], "why": f"porsi < {min_pct:.0%} modal"})
             continue
         cost = lots * per_lot
-        cash -= cost
+        left -= cost
         t = c.get("target")
         picks.append({"ticker": c["ticker"], "lot": lots, "entry": e, "stop": s, "target": t,
                       "value": round(cost), "pct": cost / capital,
@@ -101,7 +107,7 @@ def allocate(capital: float, calls: list[dict], risk_pct: float = 0.02, max_pct:
                       "reward_rp": round(lots * lot * (t - e)) if t and t > e else 0})   # untung kalau sampai target
     risk_total = sum(p["risk_rp"] for p in picks)
     reward_total = sum(p["reward_rp"] for p in picks)
-    return {"modal": capital, "used": round(capital - cash), "cash": round(cash),
+    return {"modal": capital, "kas_awal": round(start), "used": round(start - left), "cash": round(left),
             "risk_rp": risk_total, "risk_pct": risk_total / capital if capital else 0.0,
             "reward_rp": reward_total, "reward_pct": reward_total / capital if capital else 0.0,
             "picks": picks, "skipped": skipped,

@@ -1,7 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Analysis, Group, group } from "../../analysis";
-import { MacroItem } from "../../api";
+import { getJournal, MacroItem } from "../../api";
 import { C } from "../../theme";
+import { useAsync } from "../../useAsync";
 import { CallCard } from "./CallCard";
 import { MacroCard } from "./MacroCard";
 import { SlicingCard } from "./SlicingCard";
@@ -16,6 +17,9 @@ const GROUPS: { key: Group; label: string; color: string }[] = [
 export function AnalysisScreen({
   data, macro, tab, onTab,
 }: { data: Analysis; macro: MacroItem[]; tab: Group; onTab: (g: Group) => void }) {
+  // saham yang lagi dipegang (Jurnal) -> kartunya dikasih tanda, biar saran BELI gak dikira nyuruh beli lagi
+  const journal = useAsync(getJournal, []);
+  const held = new Set((journal.data?.trades ?? []).filter((t) => t.status === "open").map((t) => t.ticker));
   const counts = { beli: 0, tunggu: 0, hindari: 0 };
   data.calls.forEach((x) => (counts[group(x.action)] += 1));
 
@@ -46,7 +50,7 @@ export function AnalysisScreen({
       </View>
 
       {data.calls.filter((c) => group(c.action) === tab).map((c) => (
-        <CallCard key={c.ticker} c={c} />
+        <CallCard key={c.ticker} c={c} held={held.has(c.ticker)} />
       ))}
     </>
   );

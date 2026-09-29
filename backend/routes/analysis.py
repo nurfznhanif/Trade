@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from trade import journal as jr
 from trade.config import ANALYSIS_PATH
 from trade.db import get_connection, norm_ticker
 from trade.macro import latest as macro_latest
@@ -52,17 +53,27 @@ def get_prices(ticker: str, days: int = 90):
 
 
 class SlicingIn(BaseModel):
-    modal: int
+    kas: int | None = None     # uang kas yang belum dipakai (saldo di broker); saham di Jurnal ikut dihitung
+    modal: int | None = None   # app versi lama: modal total, dianggap belum pegang saham apa pun
 
 
 @router.post("/slicing")
 def slicing(q: SlicingIn):
-    """SLICING MODAL: bagi modal ke saham BELI analisa terbaru. Hitungan aturan risiko (trade.risk.allocate),
-    BUKAN LLM -> instan & gratis. Regime RISK-OFF -> risiko per saham dipotong setengah (sisa jadi kas)."""
-    if q.modal < 100_000:
-        raise HTTPException(400, "Modal minimal Rp100.000.")
+    """SLICING MODAL: bagi uang kas ke saham BELI analisa terbaru. Hitungan aturan risiko (trade.risk.allocate),
+    BUKAN LLM -> instan & gratis. Saham yang lagi dipegang (posisi terbuka di Jurnal) dilewati & ngurangin
+    jatah 6 saham; ukuran dihitung dari modal total = kas + nilai saham dipegang. RISK-OFF -> risiko setengah."""
+    uang = q.kas if q.kas is not None else q.modal
+    if not uang or uang < 100_000:
+        raise HTTPException(400, "Uang kas minimal Rp100.000 buat beli saham baru.")
     a = get_analysis()
     risk_off = is_risk_off(a)
-    out = allocate(q.modal, a.get("calls", []), risk_pct=0.01 if risk_off else 0.02)
-    out["risk_off"] = risk_off
+    held: list[dict] = []
+    if q.kas is not None:
+        with closing(get_connection(readonly=True)) as conn:
+            held = [{"ticker": t["ticker"], "lot": t["lot"], "value": round(t["value"])}
+                    for t in jr.report(conn)["trades"] if t["status"] == "open"]
+    held_value = sum(h["value"] for h in held)
+    out = allocate(uang + held_value, a.get("calls", []), risk_pct=0.01 if risk_off else 0.02,
+                   cash=uang, held=sorted({h["ticker"] for h in held}))
+    out.update(risk_off=risk_off, held=held, held_value=held_value)
     return out

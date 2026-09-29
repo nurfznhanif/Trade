@@ -157,7 +157,10 @@ export interface SlicePick {
   reward_rp: number; // untung kalau sampai target
 }
 export interface Slicing {
-  modal: number;
+  modal: number; // modal total = kas + nilai saham yang dipegang (dasar ukuran)
+  kas_awal?: number; // uang kas yang diisi (yang beneran dibelanjain)
+  held?: { ticker: string; lot: number; value: number }[]; // posisi terbuka di Jurnal (dilewati)
+  held_value?: number;
   used: number;
   cash: number;
   risk_rp: number;
@@ -169,7 +172,8 @@ export interface Slicing {
   skipped: { ticker: string; why: string }[];
   rules: { risk_pct: number; max_pct: number; max_pos: number; min_pct: number };
 }
-export const getSlicing = (modal: number): Promise<Slicing> => req("/slicing", json("POST", { modal }));
+// kas = uang yang belum dipakai beli (saldo di broker); saham yang dipegang dibaca server dari Jurnal
+export const getSlicing = (kas: number): Promise<Slicing> => req("/slicing", json("POST", { kas }));
 
 // ---- Tab Berita ----
 export interface NewsItem {

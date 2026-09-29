@@ -10,7 +10,7 @@ import { ui } from "../../ui";
 import { useAsync } from "../../useAsync";
 
 // kartu 1 saran saham: aksi + level Entry/Target/Stop + chart (khusus BELI) + alasan dari berita
-export function CallCard({ c }: { c: Call }) {
+export function CallCard({ c, held }: { c: Call; held?: boolean }) {
   const col = actionColor(c.action);
   const toTarget = pct(c.entry, c.target);
   const toStop = pct(c.entry, c.stop);
@@ -26,6 +26,12 @@ export function CallCard({ c }: { c: Call }) {
         </View>
       </View>
       {c.conviction && c.conviction !== "-" ? <Text style={ui.subline}>Konviksi: {c.conviction}</Text> : null}
+      {held ? (
+        <View style={ui.iconRow}>
+          <Ionicons name="briefcase-outline" size={14} color={C.info} />
+          <Text style={styles.held}>Udah dipegang — gak perlu beli lagi, lihat saran TAHAN/JUAL di Jurnal</Text>
+        </View>
+      ) : null}
 
       {c.entry != null ? (
         <View style={ui.levels}>
@@ -88,6 +94,7 @@ function CallChart({ c }: { c: Call }) {
 
 const styles = StyleSheet.create({
   lot: { color: C.accent, fontSize: 13, fontWeight: "700" },
+  held: { color: C.info, fontSize: 12, fontWeight: "700", flex: 1 },
   loading: { height: 120, alignItems: "center", justifyContent: "center" },
   caption: { color: C.muted, fontSize: 11, marginTop: 6 },
 });
