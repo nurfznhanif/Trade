@@ -87,9 +87,7 @@ function SliceResult({ r }: { r: Slicing }) {
   const more = skipped.length - 3;
   const rk = r.rules;
   const empty =
-    held.length >= rk.max_pos
-      ? `Udah pegang ${held.length} saham (maksimal ${rk.max_pos}). Tunggu ada yang kejual dulu.`
-      : r.skipped.length > 0 && r.skipped.every((s) => s.why === "udah dipegang")
+    r.skipped.length > 0 && r.skipped.every((s) => s.why === "udah dipegang")
       ? "Semua saran BELI hari ini udah Bapak pegang."
       : "Kas belum cukup buat saham BELI hari ini.";
   return (
@@ -113,8 +111,8 @@ function SliceResult({ r }: { r: Slicing }) {
           <Ionicons name="briefcase-outline" size={15} color={C.info} />
           <Text style={styles.heldText}>
             Lagi pegang {held.length} saham ({held.map((h) => code(h.ticker)).join(", ")}) senilai
-            ±{rp(r.held_value ?? 0)}, jadi dilewati. Jatah tersisa {Math.max(0, rk.max_pos - held.length)} dari{" "}
-            {rk.max_pos} saham. Ukuran dihitung dari modal total ±{rp(r.modal)}, yang dibelanjain cuma kas {rp(kas)}.
+            ±{rp(r.held_value ?? 0)}, jadi dilewati. Ukuran dihitung dari modal total ±{rp(r.modal)}, yang
+            dibelanjain cuma kas {rp(kas)}.
           </Text>
         </View>
       ) : null}
@@ -180,7 +178,7 @@ function SliceResult({ r }: { r: Slicing }) {
             (held.length ? ` Modal di sini = kas + nilai saham yang lagi dipegang (${rp(r.modal)}).` : ""),
           `Kalau harga turun sampai Stop, rugi tiap saham dijaga sekitar ${(rk.risk_pct * 100).toFixed(0)}% dari modal (${rp(r.modal * rk.risk_pct)}).` +
             (r.risk_off ? " Normalnya 2%, dipotong setengah karena pasar lagi RISK-OFF." : ""),
-          `Total maksimal ${rk.max_pos} saham, termasuk yang udah dipegang. Saham yang udah dicatat di Jurnal gak disaranin beli lagi. Porsi yang kurang dari ${Math.round(rk.min_pct * 100)}% modal (${rp(r.modal * rk.min_pct)}) gak diambil karena kekecilan.`,
+          `Jumlah saham gak dibatasi, yang membatasi cuma uang kas. Saham yang udah dicatat di Jurnal gak disaranin beli lagi. Porsi yang kurang dari ${Math.round(rk.min_pct * 100)}% modal (${rp(r.modal * rk.min_pct)}) gak diambil karena kekecilan.`,
           "Yang dapat jatah duluan: keyakinan (konviksi) paling tinggi, lalu yang peluang untungnya paling besar dibanding ruginya.",
           "Yang dibelanjain cuma uang kas yang Bapak isi. Fee beli 0,15% udah ikut dihitung, sisa yang gak kebelikan tetap jadi kas.",
         ]}

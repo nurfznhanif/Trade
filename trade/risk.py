@@ -51,14 +51,14 @@ def is_risk_off(analysis: dict) -> bool:
 
 
 def allocate(capital: float, calls: list[dict], risk_pct: float = 0.02, max_pct: float = 0.25,
-             max_pos: int = 6, min_pct: float = 0.05, fee: float = 0.0015, lot: int = LOT,
+             min_pct: float = 0.05, fee: float = 0.0015, lot: int = LOT,
              cash: float | None = None, held: list[str] | tuple = ()) -> dict:
     """SLICING MODAL: bagi uang ke saham BELI dari analisa. Murni hitungan (BUKAN LLM).
 
     capital = modal TOTAL (kas + nilai saham yang udah dipegang) -> dasar ukuran: rugi di Stop ≈ risk_pct
     modal (spekulatif setengahnya), maks max_pct modal per saham (berlaku juga buat 1 lot), porsi < min_pct
     dibuang (remah). cash = uang yang beneran bisa dibelanjain (default = capital); fee beli ikut dihitung.
-    held = saham yang udah dipegang: dilewati, dan ngurangin jatah (total maksimal max_pos saham).
+    held = saham yang udah dipegang: dilewati. Jumlah saham gak dibatasi — yang membatasi cuma kas.
     Urutan jatah: konviksi tinggi dulu -> non-spekulatif -> R:R terbesar. Modal kecil: kalau hitungan
     risiko 0 lot tapi 1 lot masih muat, tetap 1 lot (minimum IDX)."""
     rank = {"tinggi": 0, "sedang-tinggi": 0.5, "sedang": 1, "rendah": 2}
@@ -80,9 +80,6 @@ def allocate(capital: float, calls: list[dict], risk_pct: float = 0.02, max_pct:
         per_lot = e * lot * (1 + fee)
         if c["ticker"] in held:
             skipped.append({"ticker": c["ticker"], "why": "udah dipegang"})
-            continue
-        if len(held) + len(picks) >= max_pos:
-            skipped.append({"ticker": c["ticker"], "why": f"jatah {max_pos} saham penuh"})
             continue
         r = risk_pct / 2 if spek else risk_pct
         lots = min(int(capital * r // ((e - s) * lot)), int(capital * max_pct // per_lot))
@@ -111,7 +108,7 @@ def allocate(capital: float, calls: list[dict], risk_pct: float = 0.02, max_pct:
             "risk_rp": risk_total, "risk_pct": risk_total / capital if capital else 0.0,
             "reward_rp": reward_total, "reward_pct": reward_total / capital if capital else 0.0,
             "picks": picks, "skipped": skipped,
-            "rules": {"risk_pct": risk_pct, "max_pct": max_pct, "max_pos": max_pos, "min_pct": min_pct}}
+            "rules": {"risk_pct": risk_pct, "max_pct": max_pct, "min_pct": min_pct}}
 
 
 def trailing_stop_level(conn, ticker: str, entry_date: str, init_stop,

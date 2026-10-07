@@ -22,15 +22,15 @@ from .ticks import round_levels, round_tick
 
 MODAL_UJI = 1_500_000
 FEE_BUY, FEE_SELL = 0.0015, 0.0025   # beli = sama dengan Slicing; jual = fee + pajak
-MAX_POS = 6
 WIB = timezone(timedelta(hours=7))
 
 RULES = {
     "portofolio": [
         "Tiap pagi habis analisa (05.00), uang kas yang nganggur dimasukin ke Slicing Modal — aturannya sama "
-        "persis dengan tombol Hitung di app: saham yang udah dipegang dilewati, total maksimal 6 saham, ukuran "
-        "dihitung dari modal total (kas + nilai saham dipegang): maks 25% per saham, rugi di Stop dijaga ±2% "
-        "(setengahnya kalau pasar RISK-OFF), tapi belanjanya cuma pakai kas.",
+        "persis dengan tombol Hitung di app: saham yang udah dipegang dilewati, ukuran dihitung dari modal "
+        "total (kas + nilai saham dipegang): maks 25% per saham, rugi di Stop dijaga ±2% (setengahnya kalau "
+        "pasar RISK-OFF), tapi belanjanya cuma pakai kas. Jumlah saham gak dibatasi, yang membatasi cuma "
+        "uang kas.",
         "Beli di harga Entry, berlaku 1 hari. Kebeli cuma kalau hari itu harga sempat turun sampai Entry "
         "(kalau buka di bawah Entry, dapat harga buka). Gak kesentuh = batal, uangnya balik ke kas.",
         "Kalau harga buka udah di bawah Stop, gak jadi beli. Kalau di hari beli harga sempat nyentuh Stop, "
@@ -122,14 +122,12 @@ def _close_on_or_before(series: dict[str, float], d: str) -> tuple[str, float] |
 
 def _plan(a: dict, cash: float, held: list[dict], held_value: float) -> dict:
     """Order pagi itu = Slicing Modal: ukuran dari modal total (kas + nilai saham dipegang), belanja pakai kas,
-    saham yang udah dipegang dilewati, total maksimal MAX_POS saham. Sama persis dengan POST /slicing.
+    saham yang udah dipegang dilewati. Sama persis dengan POST /slicing.
     Balikin {picks, skipped (ticker + alasan), reason (kalau sama sekali gak bisa belanja)}."""
-    if len(held) >= MAX_POS:
-        return {"picks": [], "skipped": [], "reason": f"jatah {MAX_POS} saham penuh"}
     if cash < 100_000:
         return {"picks": [], "skipped": [], "reason": "kas tinggal di bawah Rp100rb"}
     out = allocate(cash + held_value, a.get("calls", []), risk_pct=0.01 if is_risk_off(a) else 0.02,
-                   max_pos=MAX_POS, cash=cash, held=[p["ticker"] for p in held])
+                   cash=cash, held=[p["ticker"] for p in held])
     return {"picks": out["picks"], "skipped": out["skipped"], "reason": None}
 
 

@@ -93,8 +93,8 @@ function SimCard({ sim, modalTxt }: { sim: Sim; modalTxt: string }) {
         <Row
           key={p.ticker}
           ticker={p.ticker}
-          pill={`${p.lot} lot @ ${fmtInt(p.buy_px)} · ${fmtDay(p.buy_date)}`}
-          lines={[`Harga ${fmtInt(p.last)} · garis jual ${fmtInt(p.trail)}`]}
+          pill={`${p.lot} lot · beli ${fmtInt(p.buy_px)} · ${fmtDay(p.buy_date)}`}
+          lines={heldLines(p)}
           flag={p.hit_target ? "Sempat lewat Target" : undefined}
           pl={p.pl_rp}
           pct={p.pl_pct}
@@ -106,7 +106,7 @@ function SimCard({ sim, modalTxt }: { sim: Sim; modalTxt: string }) {
         <Row
           key={`${p.ticker}-${p.sell_date}-${i}`}
           ticker={p.ticker}
-          pill={`${p.lot} lot · ${fmtInt(p.buy_px)} → ${fmtInt(p.sell_px)}`}
+          pill={`${p.lot} lot · beli ${fmtInt(p.buy_px)} → jual ${fmtInt(p.sell_px)}`}
           lines={[`${fmtDay(p.buy_date)} – ${fmtDay(p.sell_date)} · ${p.why}`]}
           flag={p.hit_target ? "Sempat lewat Target" : undefined}
           pl={p.pl_rp}
@@ -137,6 +137,16 @@ function SimCard({ sim, modalTxt }: { sim: Sim; modalTxt: string }) {
       ) : null}
     </View>
   );
+}
+
+// harga tutup terakhir (bukan harga live) + Target + garis jual; garis jual naik dari Stop kalau harga udah naik
+function heldLines(p: Sim["open"][number]): string[] {
+  const now = `Harga tutup ${fmtDay(p.last_date)}: ${fmtInt(p.last)}` + (p.target ? ` · Target ${fmtInt(p.target)}` : "");
+  const line =
+    p.trail > p.stop
+      ? `Garis jual ${fmtInt(p.trail)} (naik dari Stop ${fmtInt(p.stop)})`
+      : `Garis jual ${fmtInt(p.trail)} (masih di Stop awal)`;
+  return [now, line];
 }
 
 function Row({
@@ -190,7 +200,7 @@ function CallsCard({ calls, modalTxt }: { calls: Calls; modalTxt: string }) {
       <Text style={ui.cardLabel}>RAPOR SARAN BELI · {b.n} SARAN</Text>
       <Text style={styles.explain}>
         Tiap saran dinilai sendiri-sendiri seolah dibeli tanpa batas modal, jadi isinya lebih banyak dari portofolio uji
-        di atas (yang dibatasi {modalTxt} dan 6 saham). Di tiap saran ada keterangan ikut dibeli portofolio atau enggak.
+        di atas (yang uangnya cuma {modalTxt}). Di tiap saran ada keterangan ikut dibeli portofolio atau enggak.
       </Text>
       <View style={styles.stats}>
         <Stat label="Kena Target" val={`${b.target}`} color={C.up} />

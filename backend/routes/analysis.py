@@ -60,8 +60,8 @@ class SlicingIn(BaseModel):
 @router.post("/slicing")
 def slicing(q: SlicingIn):
     """SLICING MODAL: bagi uang kas ke saham BELI analisa terbaru. Hitungan aturan risiko (trade.risk.allocate),
-    BUKAN LLM -> instan & gratis. Saham yang lagi dipegang (posisi terbuka di Jurnal) dilewati & ngurangin
-    jatah 6 saham; ukuran dihitung dari modal total = kas + nilai saham dipegang. RISK-OFF -> risiko setengah."""
+    BUKAN LLM -> instan & gratis. Saham yang lagi dipegang (posisi terbuka di Jurnal) dilewati; ukuran dihitung
+    dari modal total = kas + nilai saham dipegang. RISK-OFF -> risiko setengah."""
     uang = q.kas if q.kas is not None else q.modal
     if not uang or uang < 100_000:
         raise HTTPException(400, "Uang kas minimal Rp100.000 buat beli saham baru.")

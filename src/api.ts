@@ -170,7 +170,7 @@ export interface Slicing {
   risk_off: boolean;
   picks: SlicePick[];
   skipped: { ticker: string; why: string }[];
-  rules: { risk_pct: number; max_pct: number; max_pos: number; min_pct: number };
+  rules: { risk_pct: number; max_pct: number; min_pct: number };
 }
 // kas = uang yang belum dipakai beli (saldo di broker); saham yang dipegang dibaca server dari Jurnal
 export const getSlicing = (kas: number): Promise<Slicing> => req("/slicing", json("POST", { kas }));
@@ -298,7 +298,7 @@ export interface CallResult {
   stop: number;
   result: "target" | "stop" | "jalan" | "miss" | "wait";
   ret: number | null;
-  // nasib saran ini di portofolio uji (dompet Rp1,5 juta, maks 6 saham)
+  // nasib saran ini di portofolio uji (dompet Rp1,5 juta)
   porto?: { status: "ikut" | "order" | "batal" | "lewat"; why: string } | null;
 }
 export interface Rapor {
