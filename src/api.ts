@@ -298,6 +298,8 @@ export interface CallResult {
   stop: number;
   result: "target" | "stop" | "jalan" | "miss" | "wait";
   ret: number | null;
+  // nasib saran ini di portofolio uji (dompet Rp1,5 juta, maks 6 saham)
+  porto?: { status: "ikut" | "order" | "batal" | "lewat"; why: string } | null;
 }
 export interface Rapor {
   ready: boolean;

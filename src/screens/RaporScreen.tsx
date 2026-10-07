@@ -51,7 +51,7 @@ export function RaporScreen() {
           (data.asof ? ` · harga s/d ${fmtDay(data.asof)}` : " · harga pertama masuk sore ini jam 17.00")}
       />
       <SimCard sim={sim} modalTxt={modalTxt} />
-      <CallsCard calls={calls} />
+      <CallsCard calls={calls} modalTxt={modalTxt} />
       {rules}
     </>
   );
@@ -173,13 +173,25 @@ const RESULT: Record<CallResult["result"], { label: string; color: string }> = {
   wait: { label: "Nunggu harga", color: C.muted },
 };
 
-function CallsCard({ calls }: { calls: Calls }) {
+// nasib tiap saran di portofolio uji
+const PORTO: Record<NonNullable<CallResult["porto"]>["status"], string> = {
+  ikut: "Ikut dibeli portofolio uji",
+  order: "Masuk order portofolio uji pagi ini",
+  batal: "Order portofolio uji gak kebeli",
+  lewat: "Gak masuk portofolio uji",
+};
+
+function CallsCard({ calls, modalTxt }: { calls: Calls; modalTxt: string }) {
   const b = calls.beli;
   const done = b.target + b.stop;
   const avg = calls.avg;
   return (
     <View style={styles.card}>
       <Text style={ui.cardLabel}>RAPOR SARAN BELI · {b.n} SARAN</Text>
+      <Text style={styles.explain}>
+        Tiap saran dinilai sendiri-sendiri seolah dibeli tanpa batas modal, jadi isinya lebih banyak dari portofolio uji
+        di atas (yang dibatasi {modalTxt} dan 6 saham). Di tiap saran ada keterangan ikut dibeli portofolio atau enggak.
+      </Text>
       <View style={styles.stats}>
         <Stat label="Kena Target" val={`${b.target}`} color={C.up} />
         <Stat label="Kena Stop" val={`${b.stop}`} color={C.down} />
@@ -213,6 +225,12 @@ function CallsCard({ calls }: { calls: Calls }) {
               <Text style={styles.rowSub}>
                 Entry {fmtInt(it.entry)} · Target {fmtInt(it.target)} · Stop {fmtInt(it.stop)}
               </Text>
+              {it.porto ? (
+                <Text style={[styles.porto, it.porto.status === "ikut" || it.porto.status === "order" ? styles.portoIn : null]}>
+                  {PORTO[it.porto.status]}
+                  {it.porto.why ? `: ${it.porto.why}` : ""}
+                </Text>
+              ) : null}
             </View>
             <View style={[styles.chip, { borderColor: r.color + "55" }]}>
               <Text style={[styles.chipText, { color: r.color }]}>
@@ -273,6 +291,9 @@ const styles = StyleSheet.create({
   avgN: { color: C.dim, fontSize: 10, marginTop: 1 },
   callRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10, borderTopWidth: 1, borderTopColor: C.border },
   callDate: { color: C.muted, fontSize: 11, fontWeight: "600" },
+  explain: { color: C.label, fontSize: 12, lineHeight: 17, marginTop: 6, textAlign: "justify" },
+  porto: { color: C.dim, fontSize: 11, marginTop: 3 },
+  portoIn: { color: C.accent, fontWeight: "700" },
   chip: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
   chipText: { fontSize: 11, fontWeight: "800" },
 });

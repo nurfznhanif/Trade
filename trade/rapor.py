@@ -120,13 +120,26 @@ def _close_on_or_before(series: dict[str, float], d: str) -> tuple[str, float] |
     return (max(keys), series[max(keys)]) if keys else None
 
 
-def _plan(a: dict, cash: float, held: list[dict], held_value: float) -> list[dict]:
+def _plan(a: dict, cash: float, held: list[dict], held_value: float) -> dict:
     """Order pagi itu = Slicing Modal: ukuran dari modal total (kas + nilai saham dipegang), belanja pakai kas,
-    saham yang udah dipegang dilewati, total maksimal MAX_POS saham. Sama persis dengan POST /slicing."""
-    if cash < 100_000 or len(held) >= MAX_POS:
-        return []
-    return allocate(cash + held_value, a.get("calls", []), risk_pct=0.01 if is_risk_off(a) else 0.02,
-                    max_pos=MAX_POS, cash=cash, held=[p["ticker"] for p in held])["picks"]
+    saham yang udah dipegang dilewati, total maksimal MAX_POS saham. Sama persis dengan POST /slicing.
+    Balikin {picks, skipped (ticker + alasan), reason (kalau sama sekali gak bisa belanja)}."""
+    if len(held) >= MAX_POS:
+        return {"picks": [], "skipped": [], "reason": f"jatah {MAX_POS} saham penuh"}
+    if cash < 100_000:
+        return {"picks": [], "skipped": [], "reason": "kas tinggal di bawah Rp100rb"}
+    out = allocate(cash + held_value, a.get("calls", []), risk_pct=0.01 if is_risk_off(a) else 0.02,
+                   max_pos=MAX_POS, cash=cash, held=[p["ticker"] for p in held])
+    return {"picks": out["picks"], "skipped": out["skipped"], "reason": None}
+
+
+def _note_plan(porto: dict, key: str, a: dict, plan: dict) -> None:
+    """Catat nasib tiap saran BELI di portofolio uji (dilewati + alasannya). Yang dipilih ditimpa belakangan."""
+    for c in a.get("calls", []):
+        if group(c.get("action")) == "beli":
+            porto[(key, c.get("ticker"))] = {"status": "lewat", "why": plan["reason"] or "gak masuk hitungan Slicing"}
+    for sk in plan["skipped"]:
+        porto[(key, sk["ticker"])] = {"status": "lewat", "why": sk["why"]}
 
 
 def _held_value(held: list[dict], bars: dict[str, list[Bar]], before: str | None) -> float:
@@ -140,8 +153,10 @@ def _held_value(held: list[dict], bars: dict[str, list[Bar]], before: str | None
 
 # ------------------------------------------------------------------ 1. portofolio uji
 def _simulate(days: list[str], by_day: dict[str, dict], pending: dict | None,
-              bars: dict[str, list[Bar]], modal: float) -> dict:
+              bars: dict[str, list[Bar]], modal: float) -> tuple[dict, dict]:
+    """Balikin (hasil portofolio, nasib tiap saran BELI di portofolio {(hari bursa | "today", ticker): ...})."""
     idx = {t: {b.date: i for i, b in enumerate(rows)} for t, rows in bars.items()}
+    porto: dict[tuple[str, str], dict] = {}
     cash = float(modal)
     held: list[dict] = []
     closed: list[dict] = []
@@ -157,7 +172,11 @@ def _simulate(days: list[str], by_day: dict[str, dict], pending: dict | None,
 
     for t in days:
         # order dipasang jam 05.00, SEBELUM ada yang kejual hari itu -> pakai kas & posisi awal hari
-        picks = _plan(by_day[t], cash, held, _held_value(held, bars, t)) if t in by_day else []
+        picks = []
+        if t in by_day:
+            plan = _plan(by_day[t], cash, held, _held_value(held, bars, t))
+            _note_plan(porto, t, by_day[t], plan)
+            picks = plan["picks"]
 
         for p in list(held):                               # posisi lama: cek garis jual
             i = idx[p["ticker"]].get(t)
@@ -176,16 +195,19 @@ def _simulate(days: list[str], by_day: dict[str, dict], pending: dict | None,
         for pk in picks:                                   # order baru: kebeli gak?
             tk, entry, stop = pk["ticker"], pk["entry"], pk["stop"]
             i = idx.get(tk, {}).get(t)
+            why = None
             if i is None:
-                missed.append({"ticker": tk, "date": t, "why": "gak ada data harga"})
+                why = "gak ada data harga"
+            elif bars[tk][i].open < stop:
+                why = f"harga buka {bars[tk][i].open:,.0f} udah di bawah Stop"
+            elif bars[tk][i].low > entry:
+                why = f"Entry {entry:,.0f} gak kesentuh (terendah {bars[tk][i].low:,.0f})"
+            if why:
+                missed.append({"ticker": tk, "date": t, "why": why})
+                porto[(t, tk)] = {"status": "batal", "why": why}
                 continue
             bar = bars[tk][i]
-            if bar.open < stop:
-                missed.append({"ticker": tk, "date": t, "why": f"harga buka {bar.open:,.0f} udah di bawah Stop"})
-                continue
-            if bar.low > entry:
-                missed.append({"ticker": tk, "date": t, "why": f"Entry {entry:,.0f} gak kesentuh (terendah {bar.low:,.0f})"})
-                continue
+            porto[(t, tk)] = {"status": "ikut", "why": ""}
             px = min(bar.open, entry)
             p = {"ticker": tk, "lot": pk["lot"], "shares": pk["lot"] * LOT, "buy_date": t, "buy_px": px,
                  "stop": stop, "target": pk["target"], "entry_i": i,
@@ -216,12 +238,15 @@ def _simulate(days: list[str], by_day: dict[str, dict], pending: dict | None,
     equity = cash + value
     today = []
     if pending is not None:
-        today = [{k: pk[k] for k in ("ticker", "lot", "entry", "stop", "target", "value")}
-                 for pk in _plan(pending["analysis"], cash, held, _held_value(held, bars, None))]
+        plan = _plan(pending["analysis"], cash, held, _held_value(held, bars, None))
+        _note_plan(porto, "today", pending["analysis"], plan)
+        for pk in plan["picks"]:
+            porto[("today", pk["ticker"])] = {"status": "order", "why": ""}
+        today = [{k: pk[k] for k in ("ticker", "lot", "entry", "stop", "target", "value")} for pk in plan["picks"]]
     return {"modal": modal, "cash": round(cash), "value": round(value), "equity": round(equity),
             "pl_rp": round(equity - modal), "pl_pct": equity / modal - 1,
             "open": positions, "closed": closed[::-1], "missed": missed[::-1], "curve": curve,
-            "today": today, "today_date": pending["date"] if pending else None}
+            "today": today, "today_date": pending["date"] if pending else None}, porto
 
 
 # ------------------------------------------------------------------ 2. rapor saran
@@ -244,7 +269,8 @@ def _outcome(c: dict, rows: list[Bar], t0: str | None) -> tuple[str, float | Non
     return "jalan", rows[-1].close / px - 1, None
 
 
-def _grade(entries: list[tuple[str, dict, str | None]], bars: dict[str, list[Bar]], ihsg: dict[str, float]) -> dict:
+def _grade(entries: list[tuple[str, dict, str | None]], bars: dict[str, list[Bar]], ihsg: dict[str, float],
+           porto: dict | None = None) -> dict:
     count = {"n": 0, "target": 0, "stop": 0, "jalan": 0, "miss": 0, "wait": 0}
     busy: dict[str, str | None] = {}                          # ticker -> tanggal selesai saran BELI terakhir
     items: list[dict] = []
@@ -262,7 +288,8 @@ def _grade(entries: list[tuple[str, dict, str | None]], bars: dict[str, list[Bar
             count["n"] += 1
             count[res] += 1
             items.append({"date": d, "ticker": tk, "action": c.get("action"), "entry": c.get("entry"),
-                          "target": c.get("target"), "stop": c.get("stop"), "result": res, "ret": ret})
+                          "target": c.get("target"), "stop": c.get("stop"), "result": res, "ret": ret,
+                          "porto": (porto or {}).get((t0 or "today", tk))})   # nasibnya di portofolio uji
 
     # rata-rata hasil per kelompok: dari penutupan sebelum saran PERTAMA sampai penutupan terakhir
     rets: dict[str, list[float]] = {"beli": [], "tunggu": [], "hindari": []}
@@ -310,7 +337,7 @@ def build(conn, modal: float = MODAL_UJI) -> dict:
         else:
             pending = {"date": d, "analysis": a}           # analisa hari ini, harga penutupannya belum ada
 
-    sim = _simulate(days, by_day, pending, bars, modal)
+    sim, porto = _simulate(days, by_day, pending, bars, modal)
     sim["ihsg_pct"] = None
     if days:
         a0 = _close_on_or_before(ihsg, (date.fromisoformat(days[0]) - timedelta(days=1)).isoformat())
@@ -318,4 +345,4 @@ def build(conn, modal: float = MODAL_UJI) -> dict:
         if a0 and a1:
             sim["ihsg_pct"] = a1[1] / a0[1] - 1
     return {"ready": True, "start": start, "asof": days[-1] if days else None, "n_analyses": len(arch),
-            "modal": modal, "sim": sim, "calls": _grade(entries, bars, ihsg), "rules": RULES}
+            "modal": modal, "sim": sim, "calls": _grade(entries, bars, ihsg, porto), "rules": RULES}

@@ -82,12 +82,12 @@ def allocate(capital: float, calls: list[dict], risk_pct: float = 0.02, max_pct:
             skipped.append({"ticker": c["ticker"], "why": "udah dipegang"})
             continue
         if len(held) + len(picks) >= max_pos:
-            skipped.append({"ticker": c["ticker"], "why": f"udah {max_pos} saham"})
+            skipped.append({"ticker": c["ticker"], "why": f"jatah {max_pos} saham penuh"})
             continue
         r = risk_pct / 2 if spek else risk_pct
         lots = min(int(capital * r // ((e - s) * lot)), int(capital * max_pct // per_lot))
         if per_lot > capital * max_pct:
-            skipped.append({"ticker": c["ticker"], "why": f"1 lot > {max_pct:.0%} modal"})
+            skipped.append({"ticker": c["ticker"], "why": f"1 lot kemahalan (lebih dari {max_pct:.0%} modal)"})
             continue
         if lots == 0 and per_lot <= left:
             lots = 1                                     # modal kecil: minimal 1 lot
@@ -96,7 +96,7 @@ def allocate(capital: float, calls: list[dict], risk_pct: float = 0.02, max_pct:
             skipped.append({"ticker": c["ticker"], "why": "kas gak cukup"})
             continue
         if lots * per_lot < capital * min_pct:
-            skipped.append({"ticker": c["ticker"], "why": f"porsi < {min_pct:.0%} modal"})
+            skipped.append({"ticker": c["ticker"], "why": f"porsinya kekecilan (kurang dari {min_pct:.0%} modal)"})
             continue
         cost = lots * per_lot
         left -= cost
