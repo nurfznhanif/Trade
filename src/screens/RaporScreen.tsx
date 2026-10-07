@@ -201,6 +201,13 @@ function fate(it: CallResult): { chip: string; color: string; line: string; inPo
   return { chip: p.chip ?? "Gak dibeli", color: C.muted, line: `Gak dibeli portofolio uji: ${p.why}`, inPorto: false };
 }
 
+// "BDMN 2 Okt (+9,1%), AUTO 28 Sep (−3,6%)" — saran yang udah kena Target / Stop
+function doneList(items: CallResult[], res: "target" | "stop"): string {
+  const hit = items.filter((it) => it.result === res);
+  const txt = hit.slice(0, 6).map((it) => `${code(it.ticker)} ${fmtDay(it.date)}${it.ret != null ? ` (${pctPlus(it.ret)})` : ""}`);
+  return txt.join(", ") + (hit.length > 6 ? ` +${hit.length - 6} lainnya` : "");
+}
+
 function CallsCard({ calls, modalTxt }: { calls: Calls; modalTxt: string }) {
   const b = calls.beli;
   const done = b.target + b.stop;
@@ -225,6 +232,18 @@ function CallsCard({ calls, modalTxt }: { calls: Calls; modalTxt: string }) {
           : "Belum ada saran BELI yang selesai (kena Target atau Stop)."}
         {b.wait > 0 ? ` ${b.wait} saran nunggu harga penutupan (masuk jam 17.00).` : ""}
       </Text>
+      {b.target > 0 ? (
+        <Text style={styles.note}>
+          <Text style={styles.hitUp}>Kena Target: </Text>
+          {doneList(calls.items, "target")}
+        </Text>
+      ) : null}
+      {b.stop > 0 ? (
+        <Text style={styles.note}>
+          <Text style={styles.hitDown}>Kena Stop: </Text>
+          {doneList(calls.items, "stop")}
+        </Text>
+      ) : null}
 
       <Text style={styles.part}>RATA-RATA HASIL SEJAK DISARANIN</Text>
       <View style={styles.avgRow}>
@@ -247,6 +266,12 @@ function CallsCard({ calls, modalTxt }: { calls: Calls; modalTxt: string }) {
                 Entry {fmtInt(it.entry)} · Target {fmtInt(it.target)} · Stop {fmtInt(it.stop)}
               </Text>
               {f.line ? <Text style={[styles.porto, f.inPorto ? styles.portoIn : null]}>{f.line}</Text> : null}
+              {it.result === "target" || it.result === "stop" ? (
+                <Text style={[styles.porto, it.result === "target" ? styles.hitUp : styles.hitDown]}>
+                  Sarannya kena {it.result === "target" ? `Target ${fmtInt(it.target)}` : `Stop ${fmtInt(it.stop)}`}
+                  {it.end ? ` tgl ${fmtDay(it.end)}` : ""}
+                </Text>
+              ) : null}
             </View>
             <View style={[styles.chip, { borderColor: f.color + "55" }]}>
               <Text style={[styles.chipText, { color: f.color }]}>{f.chip}</Text>
@@ -307,6 +332,8 @@ const styles = StyleSheet.create({
   explain: { color: C.label, fontSize: 12, lineHeight: 17, marginTop: 6, textAlign: "justify" },
   porto: { color: C.dim, fontSize: 11, marginTop: 3 },
   portoIn: { color: C.accent, fontWeight: "700" },
+  hitUp: { color: C.up, fontWeight: "700" },
+  hitDown: { color: C.down, fontWeight: "700" },
   chip: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
   chipText: { fontSize: 11, fontWeight: "800" },
 });

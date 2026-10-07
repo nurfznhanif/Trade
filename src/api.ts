@@ -170,7 +170,7 @@ export interface Slicing {
   risk_off: boolean;
   picks: SlicePick[];
   skipped: { ticker: string; why: string }[];
-  rules: { risk_pct: number; max_pct: number; min_pct: number };
+  rules: { risk_pct: number; max_pct: number; min_pct: number; lot1_risk: number };
 }
 // kas = uang yang belum dipakai beli (saldo di broker); saham yang dipegang dibaca server dari Jurnal
 export const getSlicing = (kas: number): Promise<Slicing> => req("/slicing", json("POST", { kas }));
@@ -298,6 +298,7 @@ export interface CallResult {
   stop: number;
   result: "target" | "stop" | "jalan" | "miss" | "wait";
   ret: number | null;
+  end?: string | null; // tanggal kena Target / Stop
   // nasib saran ini di portofolio uji (dompet Rp1,5 juta): ikut dibeli (masih dipegang / udah dijual + hasilnya),
   // order pagi ini, order gak kebeli, atau gak dibeli (chip = alasan pendek, mis. "Uang gak cukup")
   porto?: {

@@ -28,8 +28,9 @@ RULES = {
     "portofolio": [
         "Tiap pagi habis analisa (05.00), uang kas yang nganggur dimasukin ke Slicing Modal — aturannya sama "
         "persis dengan tombol Hitung di app: saham yang udah dipegang dilewati, ukuran dihitung dari modal "
-        "total (kas + nilai saham dipegang): maks 25% per saham, rugi di Stop dijaga ±2% (setengahnya kalau "
-        "pasar RISK-OFF), tapi belanjanya cuma pakai kas. Jumlah saham gak dibatasi, yang membatasi cuma "
+        "total (kas + nilai saham dipegang): maks 25% per saham (kalau 1 lot aja udah lebih dari itu, tetap "
+        "dibeli 1 lot asal rugi kalau kena Stop gak lebih dari 2% modal), rugi di Stop dijaga ±2% (setengahnya "
+        "kalau pasar RISK-OFF), tapi belanjanya cuma pakai kas. Jumlah saham gak dibatasi, yang membatasi cuma "
         "uang kas.",
         "Beli di harga Entry, berlaku 1 hari. Kebeli cuma kalau hari itu harga sempat turun sampai Entry "
         "(kalau buka di bawah Entry, dapat harga buka). Gak kesentuh = batal, uangnya balik ke kas.",
@@ -309,6 +310,7 @@ def _grade(entries: list[tuple[str, dict, str | None]], bars: dict[str, list[Bar
             count[res] += 1
             items.append({"date": d, "ticker": tk, "action": c.get("action"), "entry": c.get("entry"),
                           "target": c.get("target"), "stop": c.get("stop"), "result": res, "ret": ret,
+                          "end": end if res in ("target", "stop") else None,   # tanggal kena Target / Stop
                           "porto": (porto or {}).get((t0 or "today", tk))})   # nasibnya di portofolio uji
 
     # rata-rata hasil per kelompok: dari penutupan sebelum saran PERTAMA sampai penutupan terakhir

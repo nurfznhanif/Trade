@@ -52,12 +52,13 @@ def is_risk_off(analysis: dict) -> bool:
 
 def allocate(capital: float, calls: list[dict], risk_pct: float = 0.02, max_pct: float = 0.25,
              min_pct: float = 0.05, fee: float = 0.0015, lot: int = LOT,
-             cash: float | None = None, held: list[str] | tuple = ()) -> dict:
+             cash: float | None = None, held: list[str] | tuple = (), lot1_risk: float = 0.02) -> dict:
     """SLICING MODAL: bagi uang ke saham BELI dari analisa. Murni hitungan (BUKAN LLM).
 
     capital = modal TOTAL (kas + nilai saham yang udah dipegang) -> dasar ukuran: rugi di Stop ≈ risk_pct
-    modal (spekulatif setengahnya), maks max_pct modal per saham (berlaku juga buat 1 lot), porsi < min_pct
-    dibuang (remah). cash = uang yang beneran bisa dibelanjain (default = capital); fee beli ikut dihitung.
+    modal (spekulatif setengahnya), maks max_pct modal per saham — kecuali 1 lot aja udah lewat max_pct:
+    tetap boleh 1 lot asal rugi di Stop <= lot1_risk modal (modal kecil gak kehilangan saham bagus yang
+    harganya tinggi). Porsi < min_pct dibuang (remah). cash = uang yang beneran bisa dibelanjain (default = capital); fee beli ikut dihitung.
     held = saham yang udah dipegang: dilewati. Jumlah saham gak dibatasi — yang membatasi cuma kas.
     Urutan jatah: konviksi tinggi dulu -> non-spekulatif -> R:R terbesar. Modal kecil: kalau hitungan
     risiko 0 lot tapi 1 lot masih muat, tetap 1 lot (minimum IDX)."""
@@ -84,8 +85,11 @@ def allocate(capital: float, calls: list[dict], risk_pct: float = 0.02, max_pct:
         r = risk_pct / 2 if spek else risk_pct
         lots = min(int(capital * r // ((e - s) * lot)), int(capital * max_pct // per_lot))
         if per_lot > capital * max_pct:
-            skipped.append({"ticker": c["ticker"], "why": f"1 lot kemahalan (lebih dari {max_pct:.0%} modal)"})
-            continue
+            if (e - s) * lot > capital * lot1_risk:
+                skipped.append({"ticker": c["ticker"],
+                                "why": f"1 lot kemahalan (kalau kena Stop rugi lebih dari {lot1_risk:.0%} modal)"})
+                continue
+            lots = 1                                     # 1 lot lewat max_pct, tapi ruginya di Stop masih kecil
         if lots == 0 and per_lot <= left:
             lots = 1                                     # modal kecil: minimal 1 lot
         lots = min(lots, int(left // per_lot))
@@ -108,7 +112,7 @@ def allocate(capital: float, calls: list[dict], risk_pct: float = 0.02, max_pct:
             "risk_rp": risk_total, "risk_pct": risk_total / capital if capital else 0.0,
             "reward_rp": reward_total, "reward_pct": reward_total / capital if capital else 0.0,
             "picks": picks, "skipped": skipped,
-            "rules": {"risk_pct": risk_pct, "max_pct": max_pct, "min_pct": min_pct}}
+            "rules": {"risk_pct": risk_pct, "max_pct": max_pct, "min_pct": min_pct, "lot1_risk": lot1_risk}}
 
 
 def trailing_stop_level(conn, ticker: str, entry_date: str, init_stop,

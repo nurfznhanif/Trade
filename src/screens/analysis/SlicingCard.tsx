@@ -174,7 +174,7 @@ function SliceResult({ r }: { r: Slicing }) {
         label="Cara hitungnya"
         footer="KEPUTUSAN TETAP DI TANGAN SENDIRI"
         items={[
-          `Tiap saham maksimal ${Math.round(rk.max_pct * 100)}% dari modal (${rp(r.modal * rk.max_pct)}), biar gak numpuk di satu saham. Kalau 1 lot aja udah lebih mahal dari itu, sahamnya dilewati.` +
+          `Tiap saham maksimal ${Math.round(rk.max_pct * 100)}% dari modal (${rp(r.modal * rk.max_pct)}), biar gak numpuk di satu saham. Kalau 1 lot aja udah lebih mahal dari itu, tetap dibeli 1 lot asal rugi kalau kena Stop gak lebih dari ${Math.round(rk.lot1_risk * 100)}% modal (${rp(r.modal * rk.lot1_risk)}).` +
             (held.length ? ` Modal di sini = kas + nilai saham yang lagi dipegang (${rp(r.modal)}).` : ""),
           `Kalau harga turun sampai Stop, rugi tiap saham dijaga sekitar ${(rk.risk_pct * 100).toFixed(0)}% dari modal (${rp(r.modal * rk.risk_pct)}).` +
             (r.risk_off ? " Normalnya 2%, dipotong setengah karena pasar lagi RISK-OFF." : ""),
