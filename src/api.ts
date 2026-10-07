@@ -298,8 +298,16 @@ export interface CallResult {
   stop: number;
   result: "target" | "stop" | "jalan" | "miss" | "wait";
   ret: number | null;
-  // nasib saran ini di portofolio uji (dompet Rp1,5 juta)
-  porto?: { status: "ikut" | "order" | "batal" | "lewat"; why: string } | null;
+  // nasib saran ini di portofolio uji (dompet Rp1,5 juta): ikut dibeli (masih dipegang / udah dijual + hasilnya),
+  // order pagi ini, order gak kebeli, atau gak dibeli (chip = alasan pendek, mis. "Uang gak cukup")
+  porto?: {
+    status: "ikut" | "order" | "batal" | "lewat";
+    why: string;
+    chip?: string;
+    sold?: boolean;
+    sold_why?: string;
+    pl_pct?: number;
+  } | null;
 }
 export interface Rapor {
   ready: boolean;

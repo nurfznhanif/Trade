@@ -183,13 +183,23 @@ const RESULT: Record<CallResult["result"], { label: string; color: string }> = {
   wait: { label: "Nunggu harga", color: C.muted },
 };
 
-// nasib tiap saran di portofolio uji
-const PORTO: Record<NonNullable<CallResult["porto"]>["status"], string> = {
-  ikut: "Ikut dibeli portofolio uji",
-  order: "Masuk order portofolio uji pagi ini",
-  batal: "Order portofolio uji gak kebeli",
-  lewat: "Gak masuk portofolio uji",
-};
+// nasib tiap saran di portofolio uji: label kanan (chip) + keterangan di bawah level
+function fate(it: CallResult): { chip: string; color: string; line: string; inPorto: boolean } {
+  const p = it.porto;
+  if (!p) {
+    const r = RESULT[it.result]; // jaga-jaga: saran tanpa catatan portofolio -> hasil saran itu sendiri
+    return { chip: r.label + (it.ret != null ? ` ${pctPlus(it.ret)}` : ""), color: r.color, line: "", inPorto: false };
+  }
+  if (p.status === "ikut") {
+    const pl = p.pl_pct ?? 0;
+    return p.sold
+      ? { chip: `Dijual ${pctPlus(pl)}`, color: signColor(pl), line: `Dibeli portofolio uji, udah dijual (${p.sold_why})`, inPorto: true }
+      : { chip: `Dipegang ${pctPlus(pl)}`, color: signColor(pl), line: "Dibeli portofolio uji, masih dipegang", inPorto: true };
+  }
+  if (p.status === "order") return { chip: "Order pagi ini", color: C.info, line: "Masuk order portofolio uji pagi ini", inPorto: true };
+  if (p.status === "batal") return { chip: "Gak kebeli", color: C.muted, line: `Order gak kebeli: ${p.why}`, inPorto: false };
+  return { chip: p.chip ?? "Gak dibeli", color: C.muted, line: `Gak dibeli portofolio uji: ${p.why}`, inPorto: false };
+}
 
 function CallsCard({ calls, modalTxt }: { calls: Calls; modalTxt: string }) {
   const b = calls.beli;
@@ -199,8 +209,9 @@ function CallsCard({ calls, modalTxt }: { calls: Calls; modalTxt: string }) {
     <View style={styles.card}>
       <Text style={ui.cardLabel}>RAPOR SARAN BELI · {b.n} SARAN</Text>
       <Text style={styles.explain}>
-        Tiap saran dinilai sendiri-sendiri seolah dibeli tanpa batas modal, jadi isinya lebih banyak dari portofolio uji
-        di atas (yang uangnya cuma {modalTxt}). Di tiap saran ada keterangan ikut dibeli portofolio atau enggak.
+        Angka di bawah ini menilai semua saran BELI seolah dibeli semua tanpa batas uang, buat ngukur bagus-enggaknya
+        saran app. Daftar paling bawah nunjukin nasib tiap saran di portofolio uji {modalTxt}: dipegang, udah dijual,
+        atau gak dibeli (mis. uang gak cukup).
       </Text>
       <View style={styles.stats}>
         <Stat label="Kena Target" val={`${b.target}`} color={C.up} />
@@ -223,9 +234,9 @@ function CallsCard({ calls, modalTxt }: { calls: Calls; modalTxt: string }) {
         <Avg label="IHSG" v={avg.ihsg} />
       </View>
 
-      {calls.items.length > 0 ? <Text style={styles.part}>SARAN BELI</Text> : null}
+      {calls.items.length > 0 ? <Text style={styles.part}>NASIB TIAP SARAN DI PORTOFOLIO UJI</Text> : null}
       {calls.items.map((it, i) => {
-        const r = RESULT[it.result];
+        const f = fate(it);
         return (
           <View key={`${it.date}-${it.ticker}-${i}`} style={styles.callRow}>
             <View style={ui.flex1}>
@@ -235,18 +246,10 @@ function CallsCard({ calls, modalTxt }: { calls: Calls; modalTxt: string }) {
               <Text style={styles.rowSub}>
                 Entry {fmtInt(it.entry)} · Target {fmtInt(it.target)} · Stop {fmtInt(it.stop)}
               </Text>
-              {it.porto ? (
-                <Text style={[styles.porto, it.porto.status === "ikut" || it.porto.status === "order" ? styles.portoIn : null]}>
-                  {PORTO[it.porto.status]}
-                  {it.porto.why ? `: ${it.porto.why}` : ""}
-                </Text>
-              ) : null}
+              {f.line ? <Text style={[styles.porto, f.inPorto ? styles.portoIn : null]}>{f.line}</Text> : null}
             </View>
-            <View style={[styles.chip, { borderColor: r.color + "55" }]}>
-              <Text style={[styles.chipText, { color: r.color }]}>
-                {r.label}
-                {it.ret != null ? ` ${pctPlus(it.ret)}` : ""}
-              </Text>
+            <View style={[styles.chip, { borderColor: f.color + "55" }]}>
+              <Text style={[styles.chipText, { color: f.color }]}>{f.chip}</Text>
             </View>
           </View>
         );

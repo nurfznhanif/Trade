@@ -110,6 +110,11 @@ def _trail(rows: list[Bar], i: int, stop: float, entry_i: int) -> float:
     return round_tick(max(stop, hh - TRAIL_MULT * a))   # harga sah di broker, sama dengan menu Jurnal
 
 
+def _n(x: float) -> str:
+    """Angka buat kalimat di app: pemisah ribuan titik (1.160), bukan koma."""
+    return f"{x:,.0f}".replace(",", ".")
+
+
 def _net(shares: float, buy: float, sell: float) -> dict:
     cost, got = shares * buy * (1 + FEE_BUY), shares * sell * (1 - FEE_SELL)
     return {"pl_rp": round(got - cost), "pl_pct": got / cost - 1}
@@ -125,19 +130,34 @@ def _plan(a: dict, cash: float, held: list[dict], held_value: float) -> dict:
     saham yang udah dipegang dilewati. Sama persis dengan POST /slicing.
     Balikin {picks, skipped (ticker + alasan), reason (kalau sama sekali gak bisa belanja)}."""
     if cash < 100_000:
-        return {"picks": [], "skipped": [], "reason": "kas tinggal di bawah Rp100rb"}
+        return {"picks": [], "skipped": [], "reason": f"uang kas tinggal Rp{_n(cash)}"}
     out = allocate(cash + held_value, a.get("calls", []), risk_pct=0.01 if is_risk_off(a) else 0.02,
                    cash=cash, held=[p["ticker"] for p in held])
     return {"picks": out["picks"], "skipped": out["skipped"], "reason": None}
+
+
+def _chip(why: str) -> str:
+    """Label pendek saran yang gak dibeli portofolio uji (alasan panjangnya dari trade.risk.allocate)."""
+    if why.startswith("udah dipegang"):
+        return "Udah dipegang"
+    if why.startswith("1 lot kemahalan"):
+        return "1 lot kemahalan"
+    if why.startswith("porsinya kekecilan"):
+        return "Porsi kekecilan"
+    if "kas" in why:
+        return "Uang gak cukup"
+    return "Gak dibeli"
 
 
 def _note_plan(porto: dict, key: str, a: dict, plan: dict) -> None:
     """Catat nasib tiap saran BELI di portofolio uji (dilewati + alasannya). Yang dipilih ditimpa belakangan."""
     for c in a.get("calls", []):
         if group(c.get("action")) == "beli":
-            porto[(key, c.get("ticker"))] = {"status": "lewat", "why": plan["reason"] or "gak masuk hitungan Slicing"}
+            why = plan["reason"] or "Entry/Stop sarannya gak lengkap"
+            porto[(key, c.get("ticker"))] = {"status": "lewat", "why": why, "chip": _chip(why)}
     for sk in plan["skipped"]:
-        porto[(key, sk["ticker"])] = {"status": "lewat", "why": sk["why"]}
+        why = "udah dipegang dari saran sebelumnya" if sk["why"] == "udah dipegang" else sk["why"]
+        porto[(key, sk["ticker"])] = {"status": "lewat", "why": why, "chip": _chip(why)}
 
 
 def _held_value(held: list[dict], bars: dict[str, list[Bar]], before: str | None) -> float:
@@ -164,9 +184,10 @@ def _simulate(days: list[str], by_day: dict[str, dict], pending: dict | None,
     def sell(p: dict, px: float, d: str, why: str) -> None:
         nonlocal cash
         cash += p["shares"] * px * (1 - FEE_SELL)
+        net = _net(p["shares"], p["buy_px"], px)
         closed.append({"ticker": p["ticker"], "lot": p["lot"], "buy_date": p["buy_date"], "buy_px": p["buy_px"],
-                       "sell_date": d, "sell_px": round(px, 2), "why": why, "hit_target": p["hit_target"],
-                       **_net(p["shares"], p["buy_px"], px)})
+                       "sell_date": d, "sell_px": round(px, 2), "why": why, "hit_target": p["hit_target"], **net})
+        porto[(p["buy_date"], p["ticker"])].update(sold=True, sold_why=why, pl_pct=net["pl_pct"])
 
     for t in days:
         # order dipasang jam 05.00, SEBELUM ada yang kejual hari itu -> pakai kas & posisi awal hari
@@ -197,9 +218,9 @@ def _simulate(days: list[str], by_day: dict[str, dict], pending: dict | None,
             if i is None:
                 why = "gak ada data harga"
             elif bars[tk][i].open < stop:
-                why = f"harga buka {bars[tk][i].open:,.0f} udah di bawah Stop"
+                why = f"harga buka {_n(bars[tk][i].open)} udah di bawah Stop"
             elif bars[tk][i].low > entry:
-                why = f"Entry {entry:,.0f} gak kesentuh (terendah {bars[tk][i].low:,.0f})"
+                why = f"Entry {_n(entry)} gak kesentuh (terendah {_n(bars[tk][i].low)})"
             if why:
                 missed.append({"ticker": tk, "date": t, "why": why})
                 porto[(t, tk)] = {"status": "batal", "why": why}
@@ -226,11 +247,12 @@ def _simulate(days: list[str], by_day: dict[str, dict], pending: dict | None,
     for p in held:
         rows = bars[p["ticker"]]
         last = rows[-1]
+        net = _net(p["shares"], p["buy_px"], last.close)
         positions.append({"ticker": p["ticker"], "lot": p["lot"], "buy_date": p["buy_date"], "buy_px": p["buy_px"],
                           "stop": p["stop"], "target": p["target"], "hit_target": p["hit_target"],
                           "last": last.close, "last_date": last.date,
-                          "trail": _trail(rows, len(rows), p["stop"], p["entry_i"]),
-                          **_net(p["shares"], p["buy_px"], last.close)})
+                          "trail": _trail(rows, len(rows), p["stop"], p["entry_i"]), **net})
+        porto[(p["buy_date"], p["ticker"])].update(sold=False, pl_pct=net["pl_pct"])
 
     value = sum(p["lot"] * LOT * p["last"] * (1 - FEE_SELL) for p in positions)
     equity = cash + value
