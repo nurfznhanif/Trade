@@ -81,8 +81,13 @@ function SimCard({ sim, modalTxt }: { sim: Sim; modalTxt: string }) {
           </>
         ) : null}
       </Text>
+      {/* rincian biar kebaca: modal awal -> total sekarang = saham + kas */}
+      <Text style={styles.note}>
+        Modal awal {modalTxt}, sekarang totalnya Rp{fmtInt(sim.equity)}: Rp{fmtInt(sim.value)} lagi di saham + Rp
+        {fmtInt(sim.cash)} uang kas yang belum dipakai.
+      </Text>
       <View style={styles.stats}>
-        <Stat label="Nilai sekarang" val={`Rp${fmtInt(sim.equity)}`} />
+        <Stat label="Nilai saham" val={`Rp${fmtInt(sim.value)}`} />
         <Stat label="Uang kas" val={`Rp${fmtInt(sim.cash)}`} />
         <Stat label="Dipegang" val={`${sim.open.length} saham`} />
         <Stat label="Udah dijual" val={`${sim.closed.length} kali`} />
