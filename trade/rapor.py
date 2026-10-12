@@ -20,7 +20,7 @@ from .indicators import atr
 from .risk import LOT, TRAIL_MULT, allocate, is_risk_off
 from .ticks import round_levels, round_tick
 
-MODAL_UJI = 1_500_000
+MODAL_UJI = 100_000_000
 FEE_BUY, FEE_SELL = 0.0015, 0.0025   # beli = sama dengan Slicing; jual = fee + pajak
 WIB = timezone(timedelta(hours=7))
 

@@ -110,7 +110,7 @@ Di Claude Code juga ada perintah `/analisa` (Claude yang baca artikel) — hasil
 
 Tiap pagi `auto_analisa.py` ngarsip analisanya (tabel `analysis_archive`). Menu Rapor ngitung ulang dari
 arsip + harga asli (`trade/rapor.py`), terpisah total dari jurnal asli:
-- **Portofolio uji** — modal Rp1,5 juta (`MODAL_UJI`) ngikutin Slicing Modal tiap pagi: beli di Entry (order
+- **Portofolio uji** — modal Rp100 juta (`MODAL_UJI`) ngikutin Slicing Modal tiap pagi: beli di Entry (order
   1 hari), jual kalau nyentuh garis jual (rumus sama dengan Jurnal), biaya beli 0,15% & jual 0,25%.
 - **Rapor saran** — tiap saran BELI: kebeli? kena Target atau Stop duluan? + rata-rata hasil BELI / TUNGGU /
   HINDARI vs IHSG.

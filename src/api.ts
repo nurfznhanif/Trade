@@ -299,7 +299,7 @@ export interface CallResult {
   result: "target" | "stop" | "jalan" | "miss" | "wait";
   ret: number | null;
   end?: string | null; // tanggal kena Target / Stop
-  // nasib saran ini di portofolio uji (dompet Rp1,5 juta): ikut dibeli (masih dipegang / udah dijual + hasilnya),
+  // nasib saran ini di portofolio uji (modal MODAL_UJI di server): ikut dibeli (masih dipegang / udah dijual + hasilnya),
   // order pagi ini, order gak kebeli, atau gak dibeli (chip = alasan pendek, mis. "Uang gak cukup")
   porto?: {
     status: "ikut" | "order" | "batal" | "lewat";
