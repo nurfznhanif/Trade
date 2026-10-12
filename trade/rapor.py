@@ -294,6 +294,7 @@ def _grade(entries: list[tuple[str, dict, str | None]], bars: dict[str, list[Bar
            porto: dict | None = None) -> dict:
     count = {"n": 0, "target": 0, "stop": 0, "jalan": 0, "miss": 0, "wait": 0}
     busy: dict[str, str | None] = {}                          # ticker -> tanggal selesai saran BELI terakhir
+    active: dict[str, dict] = {}                              # ticker -> baris saran BELI yang masih jalan
     items: list[dict] = []
     first_seen: dict[tuple[str, str], tuple[str, str]] = {}   # (grup, ticker) -> (tanggal saran, t0)
     for d, a, t0 in entries:
@@ -303,7 +304,13 @@ def _grade(entries: list[tuple[str, dict, str | None]], bars: dict[str, list[Bar
             if g != "beli" or not c.get("entry") or not c.get("stop"):
                 continue
             if tk in busy and (busy[tk] is None or t0 is None or busy[tk] >= t0):
-                continue                                   # saran sebelumnya buat saham ini masih jalan hari itu
+                # saran sebelumnya buat saham ini masih jalan -> gak dihitung lagi, tapi kalau saran ulangan ini
+                # yang dibeli / diorder portofolio uji, barisnya ikut nunjukin itu (biar sama dengan kartu portofolio)
+                newer, row = (porto or {}).get((t0 or "today", tk)), active.get(tk)
+                old = (row or {}).get("porto") or {}
+                if row and newer and newer["status"] != "lewat" and not (newer["status"] == "batal" and old.get("status") == "ikut"):
+                    row["porto"] = newer
+                continue
             res, ret, end = _outcome(c, bars.get(tk, []), t0)
             busy[tk] = end
             count["n"] += 1
@@ -312,6 +319,7 @@ def _grade(entries: list[tuple[str, dict, str | None]], bars: dict[str, list[Bar
                           "target": c.get("target"), "stop": c.get("stop"), "result": res, "ret": ret,
                           "end": end if res in ("target", "stop") else None,   # tanggal kena Target / Stop
                           "porto": (porto or {}).get((t0 or "today", tk))})   # nasibnya di portofolio uji
+            active[tk] = items[-1]
 
     # rata-rata hasil per kelompok: dari penutupan sebelum saran PERTAMA sampai penutupan terakhir
     rets: dict[str, list[float]] = {"beli": [], "tunggu": [], "hindari": []}

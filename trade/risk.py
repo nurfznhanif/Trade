@@ -92,12 +92,14 @@ def allocate(capital: float, calls: list[dict], risk_pct: float = 0.02, max_pct:
             lots = 1                                     # 1 lot lewat max_pct, tapi ruginya di Stop masih kecil
         if lots == 0 and per_lot <= left:
             lots = 1                                     # modal kecil: minimal 1 lot
-        lots = min(lots, int(left // per_lot))
+        want, lots = lots, min(lots, int(left // per_lot))
         if lots <= 0:
             skipped.append({"ticker": c["ticker"], "why": "kas gak cukup"})
             continue
         if lots * per_lot < capital * min_pct:
-            skipped.append({"ticker": c["ticker"], "why": f"porsinya kekecilan (kurang dari {min_pct:.0%} modal)"})
+            why = (f"kas gak cukup (sisanya cuma muat porsi di bawah {min_pct:.0%} modal)" if lots < want
+                   else f"porsinya kekecilan (kurang dari {min_pct:.0%} modal)")
+            skipped.append({"ticker": c["ticker"], "why": why})
             continue
         cost = lots * per_lot
         left -= cost
