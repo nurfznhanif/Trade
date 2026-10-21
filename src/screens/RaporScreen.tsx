@@ -2,6 +2,7 @@ import { StyleSheet, Text, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { CallResult, getRapor, Rapor } from "../api";
 import { ErrBox, Loading } from "../components/Feedback";
+import { RemPasar } from "../components/RemPasar";
 import { RuleList } from "../components/RuleList";
 import { code, fmtDay, fmtInt, fmtRpShort, pctPlus, rpSigned } from "../format";
 import { C, signColor } from "../theme";
@@ -132,6 +133,13 @@ function SimCard({ sim, modalTxt }: { sim: Sim; modalTxt: string }) {
           ))}
           <Text style={styles.note}>Kebeli atau enggak, ketahuan sore ini jam 17.00 setelah harga penutupan masuk.</Text>
         </>
+      ) : null}
+
+      {sim.rem_today ? (
+        <RemPasar
+          style={styles.rem}
+          text={`pasar lagi RISK-OFF, jadi pagi ini (${fmtDay(sim.today_date)}) portofolio uji gak pasang order beli. Uang kas disimpan; saham yang dipegang tetap dijaga garis jualnya.`}
+        />
       ) : null}
 
       {sim.missed.length > 0 ? (
@@ -337,6 +345,7 @@ const styles = StyleSheet.create({
   explain: { color: C.label, fontSize: 12, lineHeight: 17, marginTop: 6, textAlign: "justify" },
   porto: { color: C.dim, fontSize: 11, marginTop: 3 },
   portoIn: { color: C.accent, fontWeight: "700" },
+  rem: { marginTop: 14 },
   hitUp: { color: C.up, fontWeight: "700" },
   hitDown: { color: C.down, fontWeight: "700" },
   chip: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },

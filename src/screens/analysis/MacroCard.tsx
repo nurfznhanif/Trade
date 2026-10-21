@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { Analysis } from "../../analysis";
+import { Analysis, regimeOf } from "../../analysis";
 import { MacroItem } from "../../api";
 import { fmtInt } from "../../format";
 import { C, signColor } from "../../theme";
@@ -10,10 +10,7 @@ import { ui } from "../../ui";
 // Kartu ANALISIS MAKRO: cerita pasar dari LLM (paragraf 1 + "Baca selengkapnya") + pil regime + strip angka
 export function MacroCard({ data, items }: { data: Analysis; items: MacroItem[] }) {
   const [open, setOpen] = useState(false);
-  const up = data.macro.toUpperCase();
-  // regime dari field LLM; analisa lama belum punya -> tebak dari teks
-  const regime = (data.regime || "").toUpperCase() ||
-    (up.includes("RISK-OFF") ? "RISK-OFF" : up.includes("RISK-ON") ? "RISK-ON" : "NETRAL");
+  const regime = regimeOf(data);
   const regimeCol = regime === "RISK-OFF" ? C.down : regime === "RISK-ON" ? C.up : C.warn;
   const paras = data.macro.split(/\n+/).map((s) => s.trim()).filter(Boolean);
 

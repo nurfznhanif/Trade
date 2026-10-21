@@ -61,7 +61,8 @@ class SlicingIn(BaseModel):
 def slicing(q: SlicingIn):
     """SLICING MODAL: bagi uang kas ke saham BELI analisa terbaru. Hitungan aturan risiko (trade.risk.allocate),
     BUKAN LLM -> instan & gratis. Saham yang lagi dipegang (posisi terbuka di Jurnal) dilewati; ukuran dihitung
-    dari modal total = kas + nilai saham dipegang. RISK-OFF -> risiko setengah."""
+    dari modal total = kas + nilai saham dipegang. REM PASAR: analisa RISK-OFF -> gak beli saham baru sama sekali
+    (sama dengan portofolio uji, trade/rapor.py REM_MULAI)."""
     uang = q.kas if q.kas is not None else q.modal
     if not uang or uang < 100_000:
         raise HTTPException(400, "Uang kas minimal Rp100.000 buat beli saham baru.")
@@ -73,7 +74,7 @@ def slicing(q: SlicingIn):
             held = [{"ticker": t["ticker"], "lot": t["lot"], "value": round(t["value"])}
                     for t in jr.report(conn)["trades"] if t["status"] == "open"]
     held_value = sum(h["value"] for h in held)
-    out = allocate(uang + held_value, a.get("calls", []), risk_pct=0.01 if risk_off else 0.02,
-                   cash=uang, held=sorted({h["ticker"] for h in held}))
+    calls = [] if risk_off else a.get("calls", [])   # rem pasar: kas disimpan, gak ada yang dibeli
+    out = allocate(uang + held_value, calls, cash=uang, held=sorted({h["ticker"] for h in held}))
     out.update(risk_off=risk_off, held=held, held_value=held_value)
     return out

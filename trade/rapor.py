@@ -21,6 +21,9 @@ from .risk import LOT, TRAIL_MULT, allocate, is_risk_off
 from .ticks import round_levels, round_tick
 
 MODAL_UJI = 100_000_000
+# rem pasar: mulai hari bursa ini, analisa pagi RISK-OFF -> gak beli saham baru sama sekali (keputusan Bapak
+# 21 Okt 2026, setelah IHSG ambruk ±15%). Sebelumnya RISK-OFF cuma motong ukuran setengah. Gak dihitung mundur.
+REM_MULAI = "2026-10-22"
 FEE_BUY, FEE_SELL = 0.0015, 0.0025   # beli = sama dengan Slicing; jual = fee + pajak
 WIB = timezone(timedelta(hours=7))
 
@@ -32,6 +35,10 @@ RULES = {
         "dibeli 1 lot asal rugi kalau kena Stop gak lebih dari 2% modal), rugi di Stop dijaga ±2% (setengahnya "
         "kalau pasar RISK-OFF), tapi belanjanya cuma pakai kas. Jumlah saham gak dibatasi, yang membatasi cuma "
         "uang kas.",
+        "Rem pasar (mulai 22 Okt 2026): kalau analisa pagi bilang pasar RISK-OFF (IHSG di bawah rata-rata harga "
+        "200 hari, tren turun), portofolio gak beli saham baru sama sekali, uangnya disimpan jadi kas. Saham yang "
+        "udah dipegang tetap dijaga garis jualnya. Sebelum tanggal itu, pas RISK-OFF ukuran beli cuma dipotong "
+        "setengah.",
         "Beli di harga Entry, berlaku 1 hari. Kebeli cuma kalau hari itu harga sempat turun sampai Entry "
         "(kalau buka di bawah Entry, dapat harga buka). Gak kesentuh = batal, uangnya balik ke kas.",
         "Kalau harga buka udah di bawah Stop, gak jadi beli. Kalau di hari beli harga sempat nyentuh Stop, "
@@ -126,10 +133,17 @@ def _close_on_or_before(series: dict[str, float], d: str) -> tuple[str, float] |
     return (max(keys), series[max(keys)]) if keys else None
 
 
-def _plan(a: dict, cash: float, held: list[dict], held_value: float) -> dict:
+def _rem(a: dict, day: str) -> bool:
+    """Rem pasar aktif di hari bursa `day`: udah lewat REM_MULAI dan analisa pagi itu RISK-OFF."""
+    return day >= REM_MULAI and is_risk_off(a)
+
+
+def _plan(a: dict, cash: float, held: list[dict], held_value: float, day: str) -> dict:
     """Order pagi itu = Slicing Modal: ukuran dari modal total (kas + nilai saham dipegang), belanja pakai kas,
-    saham yang udah dipegang dilewati. Sama persis dengan POST /slicing.
+    saham yang udah dipegang dilewati, rem pasar dihormati. Sama persis dengan POST /slicing.
     Balikin {picks, skipped (ticker + alasan), reason (kalau sama sekali gak bisa belanja)}."""
+    if _rem(a, day):
+        return {"picks": [], "skipped": [], "reason": "pasar lagi RISK-OFF, rem pasar aktif"}
     if cash < 100_000:
         return {"picks": [], "skipped": [], "reason": f"uang kas tinggal Rp{_n(cash)}"}
     out = allocate(cash + held_value, a.get("calls", []), risk_pct=0.01 if is_risk_off(a) else 0.02,
@@ -139,6 +153,8 @@ def _plan(a: dict, cash: float, held: list[dict], held_value: float) -> dict:
 
 def _chip(why: str) -> str:
     """Label pendek saran yang gak dibeli portofolio uji (alasan panjangnya dari trade.risk.allocate)."""
+    if "rem pasar" in why:
+        return "Rem pasar"
     if why.startswith("udah dipegang"):
         return "Udah dipegang"
     if why.startswith("1 lot kemahalan"):
@@ -194,7 +210,7 @@ def _simulate(days: list[str], by_day: dict[str, dict], pending: dict | None,
         # order dipasang jam 05.00, SEBELUM ada yang kejual hari itu -> pakai kas & posisi awal hari
         picks = []
         if t in by_day:
-            plan = _plan(by_day[t], cash, held, _held_value(held, bars, t))
+            plan = _plan(by_day[t], cash, held, _held_value(held, bars, t), t)
             _note_plan(porto, t, by_day[t], plan)
             picks = plan["picks"]
 
@@ -259,7 +275,7 @@ def _simulate(days: list[str], by_day: dict[str, dict], pending: dict | None,
     equity = cash + value
     today = []
     if pending is not None:
-        plan = _plan(pending["analysis"], cash, held, _held_value(held, bars, None))
+        plan = _plan(pending["analysis"], cash, held, _held_value(held, bars, None), pending["date"])
         _note_plan(porto, "today", pending["analysis"], plan)
         for pk in plan["picks"]:
             porto[("today", pk["ticker"])] = {"status": "order", "why": ""}
@@ -267,7 +283,8 @@ def _simulate(days: list[str], by_day: dict[str, dict], pending: dict | None,
     return {"modal": modal, "cash": round(cash), "value": round(value), "equity": round(equity),
             "pl_rp": round(equity - modal), "pl_pct": equity / modal - 1,
             "open": positions, "closed": closed[::-1], "missed": missed[::-1], "curve": curve,
-            "today": today, "today_date": pending["date"] if pending else None}, porto
+            "today": today, "today_date": pending["date"] if pending else None,
+            "rem_today": bool(pending and _rem(pending["analysis"], pending["date"]))}, porto
 
 
 # ------------------------------------------------------------------ 2. rapor saran

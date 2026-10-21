@@ -34,6 +34,13 @@ export interface Analysis {
 
 export type Group = "beli" | "tunggu" | "hindari";
 
+// regime pasar dari field LLM; analisa lama belum punya -> tebak dari teks makro
+export function regimeOf(data: Analysis): string {
+  const up = data.macro.toUpperCase();
+  return (data.regime || "").toUpperCase() ||
+    (up.includes("RISK-OFF") ? "RISK-OFF" : up.includes("RISK-ON") ? "RISK-ON" : "NETRAL");
+}
+
 // kelompok tab Beli / Tunggu / Hindari
 export function group(action: string): Group {
   if (action.startsWith("BELI")) return "beli";

@@ -330,6 +330,7 @@ export interface Rapor {
     curve: { date: string; equity: number }[];
     today: { ticker: string; lot: number; entry: number; stop: number; target: number | null; value: number }[];
     today_date: string | null;
+    rem_today?: boolean; // rem pasar aktif pagi ini (RISK-OFF) -> gak pasang order beli
   };
   calls?: {
     beli: { n: number; target: number; stop: number; jalan: number; miss: number; wait: number };

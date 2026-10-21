@@ -9,6 +9,9 @@ CATATAN BACKTEST (5thn, regime saat entry): dipakai sbg OVERLAY / dial UKURAN,
 BUKAN gate keras. Entry pas risk-off masih rata2 +2,86% (vs +3,56% risk-on) —
 skip total malah MOTONG profit (total ret 14.293% -> 10.232%). Jadi risk-off =
 selektif + ukuran kecil, bukan stop.
+UPDATE 21 Okt 2026: Bapak milih REM PASAR (gate keras: RISK-OFF -> gak beli saham baru) setelah IHSG ambruk ±15%
+di uji coba; dipakai di Slicing (/slicing) + portofolio uji mulai 22 Okt (trade/rapor.py REM_MULAI). Saran LLM
+tetap jalan (dinilai di Rapor). Trade-off di atas (untung total bisa lebih kecil) udah disampaikan ke Bapak.
 
 Kolom tiap indikator di MACRO (urutan = urutan tampil di app):
   baik  : arah yang BAGUS buat saham IDX. +1 = naik itu bagus; -1 = naik itu jelek
