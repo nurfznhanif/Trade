@@ -4,7 +4,6 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { errMsg, getSlicing, loadModal, saveModal, Slicing } from "../../api";
 import { code, fmtInt, fmtRibuan, fmtRpShort, num, pctTxt } from "../../format";
 import { C } from "../../theme";
-import { RemPasar } from "../../components/RemPasar";
 import { RuleList } from "../../components/RuleList";
 import { ui } from "../../ui";
 
@@ -87,32 +86,6 @@ function SliceResult({ r }: { r: Slicing }) {
   const skipped = r.skipped.filter((s) => s.why !== "udah dipegang"); // yang dipegang udah dijelasin di kotak biru
   const more = skipped.length - 3;
   const rk = r.rules;
-  const rules = (
-    <RuleList
-      label="Cara hitungnya"
-      footer="KEPUTUSAN TETAP DI TANGAN SENDIRI"
-      items={[
-        "Kalau pasar lagi RISK-OFF (tren IHSG turun), gak beli saham baru sama sekali (rem pasar). Uang disimpan jadi kas sampai pasar membaik.",
-        `Tiap saham maksimal ${Math.round(rk.max_pct * 100)}% dari modal (${rp(r.modal * rk.max_pct)}), biar gak numpuk di satu saham. Kalau 1 lot aja udah lebih mahal dari itu, tetap dibeli 1 lot asal rugi kalau kena Stop gak lebih dari ${Math.round(rk.lot1_risk * 100)}% modal (${rp(r.modal * rk.lot1_risk)}).` +
-          (held.length ? ` Modal di sini = kas + nilai saham yang lagi dipegang (${rp(r.modal)}).` : ""),
-        `Kalau harga turun sampai Stop, rugi tiap saham dijaga sekitar ${(rk.risk_pct * 100).toFixed(0)}% dari modal (${rp(r.modal * rk.risk_pct)}).`,
-        `Jumlah saham gak dibatasi, yang membatasi cuma uang kas. Saham yang udah dicatat di Jurnal gak disaranin beli lagi. Porsi yang kurang dari ${Math.round(rk.min_pct * 100)}% modal (${rp(r.modal * rk.min_pct)}) gak diambil karena kekecilan.`,
-        "Yang dapat jatah duluan: keyakinan (konviksi) paling tinggi, lalu yang peluang untungnya paling besar dibanding ruginya.",
-        "Yang dibelanjain cuma uang kas yang Bapak isi. Fee beli 0,15% udah ikut dihitung, sisa yang gak kebelikan tetap jadi kas.",
-      ]}
-    />
-  );
-  if (r.risk_off) {
-    return (
-      <View>
-        <RemPasar
-          style={styles.remBox}
-          text={`pasar lagi RISK-OFF (tren IHSG turun), jadi hari ini gak beli saham baru. Uang kas ${rp(kas)} disimpan dulu sampai pasar membaik. Saham yang udah dipegang tetap dijaga garis jualnya.`}
-        />
-        {rules}
-      </View>
-    );
-  }
   const empty =
     r.skipped.length > 0 && r.skipped.every((s) => s.why === "udah dipegang")
       ? "Semua saran BELI hari ini udah Bapak pegang."
@@ -140,6 +113,16 @@ function SliceResult({ r }: { r: Slicing }) {
             Lagi pegang {held.length} saham ({held.map((h) => code(h.ticker)).join(", ")}) senilai
             ±{rp(r.held_value ?? 0)}, jadi dilewati. Ukuran dihitung dari modal total ±{rp(r.modal)}, yang
             dibelanjain cuma kas {rp(kas)}.
+          </Text>
+        </View>
+      ) : null}
+
+      {r.risk_off ? (
+        <View style={styles.callout}>
+          <Ionicons name="shield-half-outline" size={16} color={C.warn} />
+          <Text style={styles.calloutText}>
+            <Text style={styles.calloutStrong}>Mode hati-hati · </Text>
+            pasar lagi RISK-OFF, ukuran tiap saham dipotong setengah. Sisanya disimpan jadi kas.
           </Text>
         </View>
       ) : null}
@@ -187,7 +170,19 @@ function SliceResult({ r }: { r: Slicing }) {
       ) : null}
 
       {/* aturan hitungan, dijelasin pakai angka rupiah modal ini */}
-      {rules}
+      <RuleList
+        label="Cara hitungnya"
+        footer="KEPUTUSAN TETAP DI TANGAN SENDIRI"
+        items={[
+          `Tiap saham maksimal ${Math.round(rk.max_pct * 100)}% dari modal (${rp(r.modal * rk.max_pct)}), biar gak numpuk di satu saham. Kalau 1 lot aja udah lebih mahal dari itu, tetap dibeli 1 lot asal rugi kalau kena Stop gak lebih dari ${Math.round(rk.lot1_risk * 100)}% modal (${rp(r.modal * rk.lot1_risk)}).` +
+            (held.length ? ` Modal di sini = kas + nilai saham yang lagi dipegang (${rp(r.modal)}).` : ""),
+          `Kalau harga turun sampai Stop, rugi tiap saham dijaga sekitar ${(rk.risk_pct * 100).toFixed(0)}% dari modal (${rp(r.modal * rk.risk_pct)}).` +
+            (r.risk_off ? " Normalnya 2%, dipotong setengah karena pasar lagi RISK-OFF." : ""),
+          `Jumlah saham gak dibatasi, yang membatasi cuma uang kas. Saham yang udah dicatat di Jurnal gak disaranin beli lagi. Porsi yang kurang dari ${Math.round(rk.min_pct * 100)}% modal (${rp(r.modal * rk.min_pct)}) gak diambil karena kekecilan.`,
+          "Yang dapat jatah duluan: keyakinan (konviksi) paling tinggi, lalu yang peluang untungnya paling besar dibanding ruginya.",
+          "Yang dibelanjain cuma uang kas yang Bapak isi. Fee beli 0,15% udah ikut dihitung, sisa yang gak kebelikan tetap jadi kas.",
+        ]}
+      />
     </View>
   );
 }
@@ -207,7 +202,9 @@ const styles = StyleSheet.create({
   stat: { width: "48.5%", alignItems: "center", paddingVertical: 10, borderRadius: 10, backgroundColor: C.sunken, borderWidth: 1, borderColor: C.border },
   statVal: { color: C.text, fontSize: 16, fontWeight: "800", marginTop: 2 },
   sub: { color: C.muted, fontSize: 11, marginTop: 2 },
-  remBox: { marginTop: 14 },
+  callout: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginBottom: 12, padding: 10, borderRadius: 10, backgroundColor: "rgba(245,158,11,0.08)", borderWidth: 1, borderColor: "rgba(245,158,11,0.30)" },
+  calloutText: { flex: 1, color: C.textSoft, fontSize: 12, lineHeight: 17, textAlign: "justify" },
+  calloutStrong: { color: C.warnText, fontWeight: "800" },
 
   row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, borderTopWidth: 1, borderTopColor: C.border },
   swatch: { width: 4, alignSelf: "stretch", borderRadius: 2 },

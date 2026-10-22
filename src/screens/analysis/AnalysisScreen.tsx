@@ -1,7 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { Analysis, Group, group, regimeOf } from "../../analysis";
+import { Analysis, Group, group } from "../../analysis";
 import { getJournal, MacroItem } from "../../api";
-import { RemPasar } from "../../components/RemPasar";
 import { C } from "../../theme";
 import { useAsync } from "../../useAsync";
 import { CallCard } from "./CallCard";
@@ -31,14 +30,6 @@ export function AnalysisScreen({
       {/* slicing modal (analisa sendiri jalan otomatis tiap subuh di server) */}
       <SlicingCard />
 
-      {/* rem pasar: pasar RISK-OFF -> saran BELI cuma dipantau, gak beli saham baru */}
-      {regimeOf(data) === "RISK-OFF" ? (
-        <RemPasar
-          style={styles.rem}
-          text="pasar lagi RISK-OFF (tren IHSG turun). Saran BELI di bawah cuma buat dipantau, jangan beli saham baru dulu. Saham yang udah dipegang tetap dijaga garis jualnya."
-        />
-      ) : null}
-
       <View style={styles.tiles}>
         {GROUPS.map((g) => (
           <View key={g.key} style={styles.tile}>
@@ -66,7 +57,6 @@ export function AnalysisScreen({
 }
 
 const styles = StyleSheet.create({
-  rem: { marginTop: 16 },
   tiles: { flexDirection: "row", gap: 10, marginTop: 16 },
   tile: { flex: 1, backgroundColor: C.card, borderRadius: 12, paddingVertical: 14, alignItems: "center", borderWidth: 1, borderColor: C.border },
   tileNum: { fontSize: 24, fontWeight: "800" },
